@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -138,12 +139,27 @@ def _issue_body(finding: Finding) -> str:
 # Public API
 # ---------------------------------------------------------------------------
 
+@dataclass
+class IssueResult:
+    """Result of filing a single finding as a GitHub issue."""
+    finding: Finding
+    issue_url: str | None
+    status: str  # "created", "skipped", "failed"
+
+
 def file_issues(findings: list[Finding]) -> tuple[int, int]:
     """File GitHub issues. Returns ``(filed_count, skipped_count)``."""
+    results = file_issues_detailed(findings)
+    filed = sum(1 for r in results if r.status == "created")
+    skipped = sum(1 for r in results if r.status == "skipped")
+    return filed, skipped
+
+
+def file_issues_detailed(findings: list[Finding]) -> list[IssueResult]:
+    """File GitHub issues and return detailed results with issue URLs."""
     repo = _repo_slug()
     headers = _github_headers()
-    filed = 0
-    skipped = 0
+    results: list[IssueResult] = []
 
     with httpx.Client(headers=headers, timeout=30) as client:
         _ensure_label(client, repo)
@@ -152,7 +168,9 @@ def file_issues(findings: list[Finding]) -> tuple[int, int]:
         for finding in findings:
             fp = fingerprint(finding)
             if fp in existing:
-                skipped += 1
+                # Try to find the existing issue URL
+                url = _find_existing_issue_url(client, repo, fp)
+                results.append(IssueResult(finding=finding, issue_url=url, status="skipped"))
                 continue
 
             resp = client.post(
@@ -167,12 +185,39 @@ def file_issues(findings: list[Finding]) -> tuple[int, int]:
                 issue_url = resp.json().get("html_url", "")
                 print(f"  Created issue: {issue_url}")
                 existing.add(fp)
-                filed += 1
+                results.append(IssueResult(finding=finding, issue_url=issue_url, status="created"))
             else:
                 print(
                     f"  Failed to create issue for {finding.finding_id}: "
                     f"{resp.status_code} {resp.text}",
                     file=sys.stderr,
                 )
+                results.append(IssueResult(finding=finding, issue_url=None, status="failed"))
 
-    return filed, skipped
+    return results
+
+
+def _find_existing_issue_url(
+    client: httpx.Client, repo: str, fp: str,
+) -> str | None:
+    """Look up the URL of an existing issue by its fingerprint."""
+    page = 1
+    while True:
+        resp = client.get(
+            f"https://api.github.com/repos/{repo}/issues",
+            params={
+                "labels": ISSUE_LABEL,
+                "state": "all",
+                "per_page": 100,
+                "page": page,
+            },
+        )
+        issues = resp.json()
+        if not issues:
+            break
+        for issue in issues:
+            body = issue.get("body") or ""
+            if fp in body:
+                return issue.get("html_url")
+        page += 1
+    return None

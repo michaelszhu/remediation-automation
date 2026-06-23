@@ -33,7 +33,7 @@ from pathlib import Path
 
 import requests
 
-from scripts.fixtures import WEBHOOK_PAYLOADS
+from scripts.fixtures import WEBHOOK_PAYLOADS, build_webhook_payloads
 
 # ---------------------------------------------------------------------------
 # Config -- ports derived from docker-compose.yml defaults
@@ -360,11 +360,18 @@ def mode_record(yes: bool) -> int:
 
     step("Clean-reset")
     clean_reset()
-    step("Seed 3 demo findings")
-    seed_demo()
-    step("POST /run-batch (real Devin sessions)")
-    batch_resp = run_batch()
-    print(f"    \u2192 {batch_resp}")
+
+    # -- Step 1: Scanner files issues on GitHub -----------------------------
+    issue_urls = _run_scanner_step(pace=1)
+    payloads = build_webhook_payloads(issue_urls) if issue_urls else WEBHOOK_PAYLOADS
+
+    # -- Step 2: Dispatch via webhooks (real Devin sessions) ----------------
+    banner("Step 2 \u2014 Webhook triggers real Devin sessions")
+    for ident in DEMO_IDENTIFIERS:
+        payload = payloads[ident]
+        step(f"Webhook for {ident}")
+        resp = post_webhook(payload)
+        print(f"    \u2192 {resp}")
 
     step("Polling until all 3 sessions reach terminal state \u2026")
     sessions = poll_terminal(3, timeout=7200, interval=30, live=True)
@@ -395,8 +402,10 @@ def mode_record(yes: bool) -> int:
         devin_url = s.get("devin_url", "\u2014")
         pr_url = s.get("pr_url")
         source_url = s.get("source_issue_url", "\u2014")
+        github_issue = issue_urls.get(ident, source_url)
 
         print(f"\n  \u2500\u2500 {ident} ({action}) \u2500\u2500")
+        print(f"    GitHub issue  : {github_issue}")
         print(f"    Devin session : {devin_url}")
         if pr_url:
             print(f"    PR URL        : {pr_url}")
@@ -408,6 +417,63 @@ def mode_record(yes: bool) -> int:
     print(f"\n  Dashboard URL   : {DASHBOARD_URL}")
     print()
     return 0
+
+
+# ===================================================================
+# Scanner / issue-filing step (shared by demo + record)
+# ===================================================================
+
+
+def _run_scanner_step(pace: int = 2) -> dict[str, str]:
+    """Run the scanner and file GitHub issues for the 3 demo findings.
+
+    Returns a mapping of identifier \u2192 issue URL.  If ``GITHUB_TOKEN``
+    is not set, prints a simulated scanner and falls back to placeholder
+    URLs from the static fixtures.
+    """
+    banner("Step 1 \u2014 Security Scanner")
+
+    github_token = os.environ.get("GITHUB_TOKEN", "")
+    if not github_token:
+        step("GITHUB_TOKEN not set \u2014 simulating scanner output")
+        print("    (set GITHUB_TOKEN to file real issues on the fork)")
+        for ident in DEMO_IDENTIFIERS:
+            payload = WEBHOOK_PAYLOADS[ident]
+            title = payload["issue"]["title"]
+            print(f"\n    \u26a0  {title}")
+            print(f"       issue: {payload['issue']['html_url']} (placeholder)")
+            time.sleep(1)
+        return {}  # empty \u2192 build_webhook_payloads falls back to static URLs
+
+    # Real scanner: import and run the issue filer
+    from scanners.seed_demo_findings import DEMO_FINDINGS
+    from scanners.issue_filer import file_issues_detailed
+
+    step("Running scanner against target repository\u2026")
+    issue_urls: dict[str, str] = {}
+
+    results = file_issues_detailed(DEMO_FINDINGS)
+    for r in results:
+        ident = r.finding.identifier
+        title = r.finding.title
+        if r.status == "created":
+            print(f"\n    \u26a0  {title}")
+            print(f"       \u2192 Filed issue: {r.issue_url}")
+        elif r.status == "skipped":
+            print(f"\n    \u26a0  {title}")
+            print(f"       \u2192 Issue already exists: {r.issue_url or '(url unknown)'}")
+        else:
+            print(f"\n    \u26a0  {title}")
+            print(f"       \u2192 Failed to file issue")
+        if r.issue_url:
+            issue_urls[ident] = r.issue_url
+        if pace > 0:
+            time.sleep(pace)
+
+    filed = sum(1 for r in results if r.status == "created")
+    skipped = sum(1 for r in results if r.status == "skipped")
+    print(f"\n    Scanner complete: {filed} new issues filed, {skipped} already existed")
+    return issue_urls
 
 
 # ===================================================================
@@ -428,18 +494,24 @@ def mode_demo(pace: int) -> int:
     step("Clean-reset \u2014 dashboard starts EMPTY")
     clean_reset()
 
-    banner(
-        f"Scanner detected {len(DEMO_IDENTIFIERS)} findings \u2192 filing issues"
-    )
+    # -- Step 1: Scanner files issues on GitHub -----------------------------
+    issue_urls = _run_scanner_step(pace=pace)
+    payloads = build_webhook_payloads(issue_urls) if issue_urls else WEBHOOK_PAYLOADS
+
+    # -- Step 2: Labeled issues trigger webhook \u2192 Devin sessions -----------
+    banner("Step 2 \u2014 Webhook triggers Devin remediation")
+    print("  GitHub sends issues.labeled webhook to orchestrator")
 
     for i, ident in enumerate(DEMO_IDENTIFIERS):
-        payload = WEBHOOK_PAYLOADS[ident]
+        payload = payloads[ident]
+        issue_url = payload["issue"]["html_url"]
 
-        step(f"Dispatching Devin session for {ident}\u2026")
+        step(f"Webhook received for {ident}")
+        print(f"    issue: {issue_url}")
         resp = post_webhook(payload)
-        print(f"    \u2192 {resp}")
+        print(f"    \u2192 Devin session dispatched: {resp.get('finding_id', '')}")
 
-        # brief wait for the background dispatch to finish (mock is instant)
+        # brief wait for the background dispatch to finish (replay is instant)
         time.sleep(2)
         sessions = get_sessions()
         latest = [s for s in sessions if s.get("identifier") == ident]
@@ -447,23 +519,29 @@ def mode_demo(pace: int) -> int:
             s = latest[-1]
             action = s.get("action_taken") or "\u2026"
             label = {
-                "fixed": "FIXED",
-                "declined": "DECLINED",
-                "false_positive": "FALSE POSITIVE",
+                "fixed": "FIXED \u2014 PR opened",
+                "declined": "DECLINED \u2014 risk flagged",
+                "false_positive": "FALSE POSITIVE \u2014 no action needed",
             }.get(action, action.upper())
-            print(f"\n    {ident}: {label}")
+            pr = s.get("pr_url")
+            print(f"    \u2192 {ident}: {label}")
+            if pr:
+                print(f"       PR: {pr}")
 
         if i < len(DEMO_IDENTIFIERS) - 1:
             print(f"\n    (pausing {pace}s \u2026)")
             time.sleep(pace)
 
-    # -- final tally --------------------------------------------------------
-    banner("Final Tally")
+    # -- Step 3: Dashboard + final tally ------------------------------------
+    banner("Step 3 \u2014 Dashboard & Results")
     dash = get_dashboard_data()
     m = dash["metrics"]
-    print(f"  Fixed    : {m['fixed']}")
-    print(f"  Declined : {m['declined']}")
-    print(f"  Total    : {m['total']}")
+    print(f"  Fixed          : {m['fixed']}")
+    print(f"  Declined       : {m['declined']}")
+    print(f"  False Positive : {m.get('false_positive', 0)}")
+    print(f"  Total Findings : {m['total']}")
+    print(f"  Total ACUs     : {m['total_acus']}")
+    print(f"  ACUs per Fix   : {m['acus_per_fix']}")
     print(f"\n  Dashboard: {DASHBOARD_URL}")
     return 0
 

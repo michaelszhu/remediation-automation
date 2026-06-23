@@ -1,1 +1,1 @@
-"""Dashboard — visualises remediation progress. Filled in a later session."""
+"""Read-only observability dashboard for remediation automation."""

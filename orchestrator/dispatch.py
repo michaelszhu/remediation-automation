@@ -170,7 +170,16 @@ async def _dispatch_inner(finding: Finding) -> SessionRecord:
         upsert_session(record)
         return record
 
-    # 5. Update record with final state
+    # 5. Terminate the session if it's still running (e.g. waiting_for_user)
+    if info.status not in TERMINAL_STATUSES:
+        logger.info(
+            "Session %s still %s after collecting output — terminating",
+            result.session_id,
+            info.status.value,
+        )
+        await asyncio.to_thread(client.terminate_session, result.session_id)
+
+    # 6. Update record with final state
     record.status = info.status
     record.acus_consumed = info.acus_consumed
     record.updated_at = datetime.now(timezone.utc)

@@ -57,6 +57,7 @@ class SessionInfo:
     pull_requests: list[dict[str, Any]]
     structured_output: dict[str, Any] | None
     tags: list[str]
+    status_detail: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -83,17 +84,35 @@ class BaseDevinClient(ABC):
     def get_session(self, session_id: str) -> SessionInfo:
         ...
 
+    def terminate_session(self, session_id: str) -> None:
+        """Terminate a session. No-op by default (subclasses may override)."""
+
     def poll_until_terminal(
         self,
         session_id: str,
         interval: float = 30.0,
         timeout: float = 7200.0,
     ) -> SessionInfo:
-        """Poll ``get_session`` until a terminal status or timeout."""
+        """Poll ``get_session`` until a terminal status or timeout.
+
+        A session is considered done when it reaches a terminal status
+        (exit, error, suspended) **or** when it is waiting for user input
+        and has already produced structured output — meaning the
+        remediation task is complete even though the session hasn't
+        formally exited.
+        """
         deadline = time.monotonic() + timeout
         while True:
             info = self.get_session(session_id)
             if info.status in TERMINAL_STATUSES:
+                return info
+            if _session_effectively_done(info):
+                logger.info(
+                    "Session %s is done (status_detail=%s, "
+                    "structured_output present) — treating as terminal",
+                    session_id,
+                    info.status_detail,
+                )
                 return info
             if time.monotonic() >= deadline:
                 raise TimeoutError(
@@ -183,6 +202,18 @@ class DevinClient(BaseDevinClient):
         resp.raise_for_status()
         return _parse_session_response(resp.json())
 
+    # -- terminate ----------------------------------------------------------
+
+    def terminate_session(self, session_id: str) -> None:
+        """Terminate a running session via the v3 API."""
+        url = f"{self._base}/{session_id}/terminate"
+        try:
+            resp = httpx.post(url, headers=self._headers, timeout=30)
+            resp.raise_for_status()
+            logger.info("Terminated session %s", session_id)
+        except Exception as exc:
+            logger.warning("Failed to terminate session %s: %s", session_id, exc)
+
     # -- poll (override to add recording side-effect) -----------------------
 
     def poll_until_terminal(
@@ -214,6 +245,18 @@ class DevinClient(BaseDevinClient):
         logger.info("Recorded session %s → %s (%d bytes)", session_id, path, path.stat().st_size)
 
 
+def _session_effectively_done(info: SessionInfo) -> bool:
+    """Return True when Devin finished its task but the session is still open.
+
+    The v3 API keeps sessions in ``running (waiting_for_user)`` after the
+    agent completes its work.  We treat that as terminal once structured
+    output has been produced.
+    """
+    if info.status_detail == "waiting_for_user" and info.structured_output:
+        return True
+    return False
+
+
 def _parse_session_response(data: dict[str, Any]) -> SessionInfo:
     return SessionInfo(
         session_id=data["session_id"],
@@ -222,6 +265,7 @@ def _parse_session_response(data: dict[str, Any]) -> SessionInfo:
         pull_requests=data.get("pull_requests", []),
         structured_output=data.get("structured_output"),
         tags=data.get("tags", []),
+        status_detail=data.get("status_detail"),
     )
 
 

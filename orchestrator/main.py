@@ -1,0 +1,190 @@
+"""FastAPI application — webhook receiver, batch trigger, and health check.
+
+This is a DUMB dispatcher. All remediation logic lives in the Devin Playbook.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import logging
+from contextlib import asynccontextmanager
+from typing import Any
+
+from fastapi import BackgroundTasks, FastAPI, Request, Response
+
+from shared import config
+from shared.db import init_db, list_findings, upsert_finding
+from shared.models import Finding, FindingType, SessionRecord
+
+from orchestrator.dispatch import dispatch_batch, dispatch_finding
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s")
+
+
+# ---------------------------------------------------------------------------
+# Lifespan — initialize DB on startup
+# ---------------------------------------------------------------------------
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    logger.info("Database initialized")
+    yield
+
+
+app = FastAPI(
+    title="Remediation Orchestrator",
+    description="Dispatches security findings to Devin for automated remediation.",
+    lifespan=lifespan,
+)
+
+
+# ---------------------------------------------------------------------------
+# GET /healthz
+# ---------------------------------------------------------------------------
+
+
+@app.get("/healthz")
+async def healthz() -> dict[str, str]:
+    return {"status": "ok"}
+
+
+# ---------------------------------------------------------------------------
+# POST /webhook — GitHub "issues.labeled" events
+# ---------------------------------------------------------------------------
+
+
+@app.post("/webhook")
+async def webhook(request: Request, background_tasks: BackgroundTasks) -> dict[str, Any]:
+    """Receive GitHub webhook for issues.labeled events.
+
+    When the label is "devin-remediate", parse the issue into a Finding and
+    dispatch a Devin session in the background.
+    """
+    payload = await request.json()
+
+    # Validate event type
+    action = payload.get("action")
+    label_name = payload.get("label", {}).get("name", "")
+    if action != "labeled" or label_name != "devin-remediate":
+        return {"status": "ignored", "reason": "not a devin-remediate label event"}
+
+    # Parse issue into a Finding
+    issue = payload.get("issue", {})
+    finding = _parse_issue_to_finding(issue)
+
+    # Persist and dispatch in background
+    upsert_finding(finding)
+    background_tasks.add_task(_dispatch_and_log, finding)
+
+    return {
+        "status": "dispatched",
+        "finding_id": finding.finding_id,
+        "identifier": finding.identifier,
+    }
+
+
+async def _dispatch_and_log(finding: Finding) -> None:
+    """Background task wrapper for dispatch."""
+    try:
+        record = await dispatch_finding(finding)
+        logger.info(
+            "Dispatch complete: finding=%s session=%s status=%s",
+            finding.finding_id,
+            record.devin_session_id,
+            record.status.value,
+        )
+    except Exception as exc:
+        logger.exception("Dispatch failed for %s: %s", finding.finding_id, exc)
+
+
+# ---------------------------------------------------------------------------
+# POST /run-batch — manual trigger for all unprocessed findings
+# ---------------------------------------------------------------------------
+
+
+@app.post("/run-batch")
+async def run_batch(background_tasks: BackgroundTasks) -> dict[str, Any]:
+    """Load all open 'devin-remediate' findings from the DB and dispatch each.
+
+    Runs dispatch in the background so the endpoint returns immediately.
+    """
+    findings = list_findings()
+    if not findings:
+        return {"status": "no_findings", "count": 0}
+
+    background_tasks.add_task(_run_batch_task, findings)
+    return {"status": "dispatching", "count": len(findings)}
+
+
+async def _run_batch_task(findings: list[Finding]) -> None:
+    """Background task for batch dispatch."""
+    try:
+        records = await dispatch_batch(findings)
+        logger.info("Batch complete: %d findings processed", len(records))
+    except Exception as exc:
+        logger.exception("Batch dispatch failed: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _parse_issue_to_finding(issue: dict[str, Any]) -> Finding:
+    """Parse a GitHub issue payload into a Finding.
+
+    Heuristic:
+    - If the issue title contains "CVE-" or issue labels include "sca", it's SCA.
+    - Otherwise treat as SAST.
+    - The identifier is extracted from the title (first word/token after the type
+      indicator, or the whole title if no clear pattern).
+    """
+    title = issue.get("title", "")
+    body = issue.get("body", "") or ""
+    labels = [lbl.get("name", "") for lbl in issue.get("labels", [])]
+    issue_url = issue.get("html_url", "")
+
+    # Determine finding type
+    is_sca = any(
+        indicator in title.upper() or indicator in body.upper()
+        for indicator in ("CVE-", "GHSA-", "OSV-")
+    ) or "sca" in labels
+    finding_type = FindingType.SCA if is_sca else FindingType.SAST
+
+    # Extract identifier from title
+    identifier = _extract_identifier(title)
+
+    # Determine severity from labels
+    severity = "medium"
+    for lbl in labels:
+        if lbl in ("critical", "high", "medium", "low"):
+            severity = lbl
+            break
+
+    # Stable finding_id derived from issue URL
+    finding_id = f"finding-{hashlib.sha256(issue_url.encode()).hexdigest()[:12]}"
+
+    return Finding(
+        finding_id=finding_id,
+        finding_type=finding_type,
+        identifier=identifier,
+        title=title,
+        severity=severity,
+        source_issue_url=issue_url,
+        raw_details={"body": body, "labels": labels},
+    )
+
+
+def _extract_identifier(title: str) -> str:
+    """Best-effort extraction of the package/rule identifier from issue title."""
+    # Common patterns: "CVE-XXXX-YYYY in package_name" or "rule-id: description"
+    parts = title.split()
+    if len(parts) >= 3 and parts[1].lower() == "in":
+        return parts[2].rstrip(":")
+    if ":" in title:
+        return title.split(":")[0].strip()
+    # Fall back to first meaningful token
+    return parts[0] if parts else title

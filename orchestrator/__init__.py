@@ -1,1 +1,1 @@
-"""Orchestrator — dispatches remediation sessions. Filled in a later session."""
+"""Orchestrator — FastAPI dispatcher and tracker for remediation sessions."""

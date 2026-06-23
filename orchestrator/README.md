@@ -99,7 +99,7 @@ Returns immediately; processing runs in the background.
 
 | Variable             | Default                | Description                          |
 |----------------------|------------------------|--------------------------------------|
-| `DEVIN_MOCK`         | `0`                    | Set to `1` for mock mode             |
+| `DEVIN_MOCK`         | `0`                    | Set to `1` for replay mode           |
 | `PLAYBOOK_ID`        | —                      | Devin playbook for remediation       |
 | `MAX_CONCURRENCY`    | `3`                    | Max parallel Devin sessions          |
 | `MAX_ACU_LIMIT`      | `10`                   | ACU budget per session               |
@@ -109,7 +109,7 @@ Returns immediately; processing runs in the background.
 ## Running Locally
 
 ```bash
-# Mock mode — no API key needed
+# Replay mode — no API key needed
 export DEVIN_MOCK=1
 export PLAYBOOK_ID=playbook-test-123
 export PYTHONPATH=$(pwd)/..  # or project root

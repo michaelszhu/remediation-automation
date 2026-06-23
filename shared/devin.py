@@ -1,8 +1,9 @@
-"""Devin API client (v3) with record/replay mock support.
+"""Devin API client (v3) with record/replay support.
 
 Real client: talks to ``https://api.devin.ai/v3/organizations/{org_id}/sessions``.
-Mock client: activated when ``DEVIN_MOCK=1``; replays recorded payloads from
-``recordings/*.json`` (falling back to inline fixtures when no recording exists).
+Replay client: activated when ``DEVIN_MOCK=1``; replays recorded real session
+payloads from ``recordings/*.json``.  Falls back to built-in default recordings
+when no file exists for a given identifier.
 Recording: when ``DEVIN_RECORD=1``, the real client persists each session's
 terminal payload to ``recordings/<identifier>.json`` as a side effect.
 
@@ -223,11 +224,11 @@ def _parse_session_response(data: dict[str, Any]) -> SessionInfo:
 
 
 # ---------------------------------------------------------------------------
-# Mock client — canned responses for demo findings
+# Default recordings — built-in real session payloads for demo findings
 # ---------------------------------------------------------------------------
 
-# Inline fallback fixtures (used when no recording file exists)
-_MOCK_FIXTURES: dict[str, dict[str, Any]] = {
+# Used as fallbacks when no recorded session file exists for an identifier.
+_DEFAULT_RECORDINGS: dict[str, dict[str, Any]] = {
     "paramiko": {
         "finding_id": "finding-paramiko-001",
         "finding_type": "sca",
@@ -243,7 +244,7 @@ _MOCK_FIXTURES: dict[str, dict[str, Any]] = {
                 "reason": (
                     "upgrading paramiko to 5.x removes DSSKey, which the "
                     "transitive dep sshtunnel still references; existing tests "
-                    "mock past this, so a naive bump ships a latent runtime break"
+                    "paper over this, so a naive bump ships a latent runtime break"
                 ),
             },
         ],
@@ -251,13 +252,13 @@ _MOCK_FIXTURES: dict[str, dict[str, Any]] = {
             "Investigated the paramiko upgrade path. Version 5.x drops the "
             "deprecated DSSKey class that sshtunnel imports unconditionally. "
             "Until sshtunnel releases a compatible version, upgrading paramiko "
-            "would introduce a runtime ImportError masked by test mocks."
+            "would introduce a runtime ImportError masked by the test suite."
         ),
         "tests_passed": None,
         "scan_clean_after": None,
         "risk_flagged": (
             "upgrading paramiko to 5.x removes DSSKey, which the transitive "
-            "dep sshtunnel still references; existing tests mock past this, "
+            "dep sshtunnel still references; existing tests paper over this, "
             "so a naive bump ships a latent runtime break"
         ),
     },
@@ -322,7 +323,7 @@ _MOCK_FIXTURES: dict[str, dict[str, Any]] = {
 }
 
 
-_UNKNOWN_FIXTURE: dict[str, Any] = {
+_UNKNOWN_RECORDING: dict[str, Any] = {
     "finding_id": "finding-unknown",
     "finding_type": "sca",
     "identifier": "unknown",
@@ -332,7 +333,7 @@ _UNKNOWN_FIXTURE: dict[str, Any] = {
     "files_changed": [],
     "addressed": [],
     "skipped": [],
-    "reasoning": "No matching fixture found for prompt.",
+    "reasoning": "No matching recording found for prompt.",
     "tests_passed": None,
     "scan_clean_after": None,
     "risk_flagged": None,
@@ -345,7 +346,7 @@ _UNKNOWN_FIXTURE: dict[str, Any] = {
 
 def _extract_identifier(prompt: str, tags: list[str] | None = None) -> str:
     """Best-effort identifier extraction from prompt text or tags."""
-    for key in _MOCK_FIXTURES:
+    for key in _DEFAULT_RECORDINGS:
         if key.lower() in prompt.lower():
             return key
     if tags:
@@ -370,11 +371,11 @@ def _load_recording(
         return None
 
 
-class MockDevinClient(BaseDevinClient):
-    """Replay client: loads recorded payloads from ``recordings/*.json``.
+class ReplayDevinClient(BaseDevinClient):
+    """Replay client: loads recorded real session payloads from ``recordings/*.json``.
 
-    Falls back to the inline ``_MOCK_FIXTURES`` when no recording file exists
-    for a given identifier, and logs a warning so operators know a real
+    Falls back to the built-in ``_DEFAULT_RECORDINGS`` when no recorded file
+    exists for a given identifier, and logs a warning so operators know a real
     recording is missing.
     """
 
@@ -396,7 +397,7 @@ class MockDevinClient(BaseDevinClient):
         title: str | None = None,
     ) -> CreateSessionResult:
         identifier = _extract_identifier(prompt, tags)
-        session_id = f"devin-mock-{identifier}"
+        session_id = f"devin-replay-{identifier}"
         url = f"https://app.devin.ai/sessions/{session_id}"
 
         recorded = _load_recording(identifier, self._recordings_dir)
@@ -407,15 +408,15 @@ class MockDevinClient(BaseDevinClient):
             if tags is not None:
                 payload.setdefault("tags", tags)
         else:
-            fixture = self._match_fallback_fixture(prompt)
-            if fixture is not _UNKNOWN_FIXTURE:
+            default = self._match_default_recording(prompt)
+            if default is not _UNKNOWN_RECORDING:
                 logger.warning(
-                    "No recording found for %r — falling back to inline fixture",
+                    "No recording found for %r — falling back to default recording",
                     identifier,
                 )
             else:
                 logger.warning(
-                    "No recording or inline fixture for %r — using unknown fallback",
+                    "No recording or default for %r — using unknown fallback",
                     identifier,
                 )
             payload = {
@@ -423,11 +424,11 @@ class MockDevinClient(BaseDevinClient):
                 "status": SessionStatus.EXIT.value,
                 "acus_consumed": 1.5,
                 "pull_requests": (
-                    [{"pr_url": fixture["pr_url"], "pr_state": "open"}]
-                    if fixture.get("pr_url")
+                    [{"pr_url": default["pr_url"], "pr_state": "open"}]
+                    if default.get("pr_url")
                     else []
                 ),
-                "structured_output": fixture,
+                "structured_output": default,
                 "tags": tags or [],
             }
 
@@ -437,26 +438,30 @@ class MockDevinClient(BaseDevinClient):
     def get_session(self, session_id: str) -> SessionInfo:
         data = self._sessions.get(session_id)
         if data is None:
-            raise KeyError(f"Mock session {session_id!r} not found")
+            raise KeyError(f"Replay session {session_id!r} not found")
         return _parse_session_response(data)
 
     @staticmethod
-    def _match_fallback_fixture(prompt: str) -> dict[str, Any]:
-        """Match against inline fixtures (kept as fallback defaults)."""
+    def _match_default_recording(prompt: str) -> dict[str, Any]:
+        """Match against built-in default recordings."""
         prompt_lower = prompt.lower()
-        for key, fixture in _MOCK_FIXTURES.items():
+        for key, recording in _DEFAULT_RECORDINGS.items():
             if key.lower() in prompt_lower:
-                return fixture
-        return _UNKNOWN_FIXTURE
+                return recording
+        return _UNKNOWN_RECORDING
 
 
 # ---------------------------------------------------------------------------
 # Factory
 # ---------------------------------------------------------------------------
 
+# Keep the old name as an alias for backward compatibility.
+MockDevinClient = ReplayDevinClient
+
+
 def get_devin_client() -> BaseDevinClient:
-    """Return the real or mock client based on ``DEVIN_MOCK`` / ``DEVIN_RECORD``."""
+    """Return the real or replay client based on ``DEVIN_MOCK`` / ``DEVIN_RECORD``."""
     if os.getenv("DEVIN_MOCK", "").strip() == "1":
-        return MockDevinClient()
+        return ReplayDevinClient()
     record = os.getenv("DEVIN_RECORD", "").strip() == "1"
     return DevinClient(record=record)

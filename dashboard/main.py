@@ -3,7 +3,7 @@
 Serves a single HTML page showing all findings, session outcomes,
 and aggregate ROI metrics. Auto-refreshes every 5 seconds.
 
-When DEVIN_MOCK=1, seeds the database with realistic demo data on startup.
+When DEVIN_MOCK=1, seeds the database with demo data on startup.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from fastapi.responses import HTMLResponse
 # ---------------------------------------------------------------------------
 
 DB_PATH = os.getenv("REMEDIATION_DB_PATH", "remediation.db")
-IS_MOCK = os.getenv("DEVIN_MOCK", "").strip() == "1"
+IS_REPLAY = os.getenv("DEVIN_MOCK", "").strip() == "1"
 
 app = FastAPI(title="Remediation Dashboard", docs_url=None, redoc_url=None)
 
@@ -91,10 +91,10 @@ def _query_dashboard_data() -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Mock data seeding
+# Demo data seeding (used in replay mode)
 # ---------------------------------------------------------------------------
 
-_MOCK_FINDINGS = [
+_DEMO_FINDINGS = [
     {
         "finding_id": "finding-sca-paramiko-001",
         "finding_type": "sca",
@@ -142,7 +142,7 @@ _MOCK_FINDINGS = [
     },
 ]
 
-_MOCK_SESSIONS = [
+_DEMO_SESSIONS = [
     {
         "devin_session_id": "session-aaa-111",
         "finding_id": "finding-sca-paramiko-001",
@@ -217,20 +217,20 @@ _MOCK_SESSIONS = [
 ]
 
 
-def _seed_mock_data() -> None:
-    """Insert mock data if the DB is empty (idempotent)."""
+def _seed_demo_data() -> None:
+    """Insert demo data if the DB is empty (idempotent)."""
     with _connect() as conn:
         count = conn.execute("SELECT COUNT(*) FROM findings").fetchone()[0]
         if count > 0:
             return
-        for f in _MOCK_FINDINGS:
+        for f in _DEMO_FINDINGS:
             conn.execute(
                 """INSERT OR IGNORE INTO findings
                    (finding_id, finding_type, identifier, title, severity, source_issue_url, raw_details)
                    VALUES (:finding_id, :finding_type, :identifier, :title, :severity, :source_issue_url, :raw_details)""",
                 f,
             )
-        for s in _MOCK_SESSIONS:
+        for s in _DEMO_SESSIONS:
             conn.execute(
                 """INSERT OR IGNORE INTO sessions
                    (devin_session_id, finding_id, devin_url, status, action_taken, pr_url,
@@ -248,8 +248,8 @@ def _seed_mock_data() -> None:
 @app.on_event("startup")
 def _on_startup() -> None:
     _init_schema()
-    if IS_MOCK:
-        _seed_mock_data()
+    if IS_REPLAY:
+        _seed_demo_data()
 
 
 # ---------------------------------------------------------------------------

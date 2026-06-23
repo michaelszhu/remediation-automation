@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from shared import config
-from shared.db import init_db, upsert_finding, upsert_session
+from shared.db import init_db, list_sessions, upsert_finding, upsert_session
 from shared.devin import BaseDevinClient, SessionInfo, get_devin_client
 from shared.models import (
     REMEDIATION_OUTPUT_SCHEMA,
@@ -101,6 +101,17 @@ async def dispatch_finding(finding: Finding) -> SessionRecord:
 
 async def _dispatch_inner(finding: Finding) -> SessionRecord:
     """Internal dispatch — runs under the semaphore."""
+    # Idempotency: skip if a terminal session already exists for this finding
+    existing = list_sessions(finding_id=finding.finding_id)
+    terminal = [s for s in existing if s.status in TERMINAL_STATUSES]
+    if terminal:
+        logger.info(
+            "Finding %s already has terminal session %s — skipping",
+            finding.finding_id,
+            terminal[-1].devin_session_id,
+        )
+        return terminal[-1]
+
     client = get_devin_client()
     playbook_id = config.PLAYBOOK_ID() or None
     max_acu = config.MAX_ACU_LIMIT()
@@ -178,6 +189,7 @@ async def _dispatch_inner(finding: Finding) -> SessionRecord:
         record.status.value,
         record.action_taken,
     )
+
     return record
 
 

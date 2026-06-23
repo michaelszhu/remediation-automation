@@ -7,13 +7,16 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import os
+import sqlite3
 from contextlib import asynccontextmanager
+from datetime import datetime
 from typing import Any
 
 from fastapi import BackgroundTasks, FastAPI, Request, Response
 
 from shared import config
-from shared.db import init_db, list_findings, upsert_finding
+from shared.db import DEFAULT_DB_PATH, init_db, list_findings, list_sessions, upsert_finding
 from shared.models import Finding, FindingType, SessionRecord
 
 from orchestrator.dispatch import dispatch_batch, dispatch_finding
@@ -188,3 +191,113 @@ def _extract_identifier(title: str) -> str:
         return title.split(":")[0].strip()
     # Fall back to first meaningful token
     return parts[0] if parts else title
+
+
+# ---------------------------------------------------------------------------
+# Utility endpoints — dev / demo / test
+# ---------------------------------------------------------------------------
+
+_DEMO_SEED_FINDINGS = [
+    Finding(
+        finding_id="finding-paramiko-001",
+        finding_type=FindingType.SCA,
+        identifier="paramiko",
+        title="CVE-2023-48795 in paramiko \u2014 Terrapin attack",
+        severity="high",
+        source_issue_url="https://github.com/michaelszhu/superset/issues/101",
+        raw_details={"cve": "CVE-2023-48795", "package": "paramiko", "installed_version": "3.5.1"},
+    ),
+    Finding(
+        finding_id="finding-pyjwt-001",
+        finding_type=FindingType.SCA,
+        identifier="PyJWT",
+        title="CVE-2022-29217 in PyJWT \u2014 algorithm confusion",
+        severity="critical",
+        source_issue_url="https://github.com/michaelszhu/superset/issues/102",
+        raw_details={"cve": "CVE-2022-29217", "package": "PyJWT", "installed_version": "2.12.0"},
+    ),
+    Finding(
+        finding_id="finding-hive-injection-001",
+        finding_type=FindingType.SAST,
+        identifier="hive-column-injection",
+        title="hive-column-injection: SQL injection via unescaped column identifiers",
+        severity="high",
+        source_issue_url="https://github.com/michaelszhu/superset/issues/103",
+        raw_details={"rule_id": "hive-column-injection", "path": "superset/db_engine_specs/hive.py"},
+    ),
+]
+
+
+@app.post("/reset")
+async def reset() -> dict[str, str]:
+    """Clear all findings and sessions \u2014 dev/test utility."""
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        conn.execute("DELETE FROM sessions")
+        conn.execute("DELETE FROM findings")
+        conn.commit()
+    finally:
+        conn.close()
+    return {"status": "reset"}
+
+
+@app.post("/seed-demo")
+async def seed_demo() -> dict[str, Any]:
+    """Insert the 3 demo findings without dispatching."""
+    for f in _DEMO_SEED_FINDINGS:
+        upsert_finding(f)
+    return {
+        "status": "seeded",
+        "count": len(_DEMO_SEED_FINDINGS),
+        "findings": [
+            {"finding_id": f.finding_id, "identifier": f.identifier}
+            for f in _DEMO_SEED_FINDINGS
+        ],
+    }
+
+
+@app.get("/sessions")
+async def sessions_list() -> dict[str, Any]:
+    """List all session records with structured output and finding context."""
+    sessions = list_sessions()
+    findings_map = {f.finding_id: f for f in list_findings()}
+    return {
+        "sessions": [
+            {
+                "devin_session_id": s.devin_session_id,
+                "finding_id": s.finding_id,
+                "devin_url": s.devin_url,
+                "status": s.status.value,
+                "action_taken": s.action_taken,
+                "pr_url": s.pr_url,
+                "acus_consumed": s.acus_consumed,
+                "created_at": (
+                    s.created_at.isoformat()
+                    if isinstance(s.created_at, datetime)
+                    else str(s.created_at)
+                ),
+                "updated_at": (
+                    s.updated_at.isoformat()
+                    if isinstance(s.updated_at, datetime)
+                    else str(s.updated_at)
+                ),
+                "structured_output": s.structured_output,
+                "identifier": (
+                    findings_map[s.finding_id].identifier
+                    if s.finding_id in findings_map
+                    else None
+                ),
+                "finding_type": (
+                    findings_map[s.finding_id].finding_type.value
+                    if s.finding_id in findings_map
+                    else None
+                ),
+                "source_issue_url": (
+                    findings_map[s.finding_id].source_issue_url
+                    if s.finding_id in findings_map
+                    else None
+                ),
+            }
+            for s in sessions
+        ],
+    }

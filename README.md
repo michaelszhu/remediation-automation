@@ -54,13 +54,24 @@ shared/            # The contract — data models, DB helpers, Devin client
   devin.py         # DevinClient (v3 API), ReplayDevinClient, get_devin_client()
   config.py        # Env-var config helpers
 
-orchestrator/      # FastAPI service — dispatches & tracks sessions (TBD)
-dashboard/         # Status dashboard (TBD)
+orchestrator/      # FastAPI service — dispatches & tracks sessions
+  main.py          # /healthz, /webhook, /run-batch, /reset, /seed-demo, /sessions
+  dispatch.py      # Prompt builder, session lifecycle, idempotency, recording
+
+dashboard/         # Read-only status dashboard
+  main.py          # HTML + /api/data JSON endpoint
+
 scanners/          # Finding ingesters
   run_sca.py       # pip-audit SCA scanner
   run_sast.py      # Semgrep SAST scanner
   issue_filer.py   # Idempotent GitHub issue creator
   seed_demo_findings.py  # Deterministic 3-finding demo seeder
+
+scripts/           # Validation & demo tooling
+  run_demo.py      # Three-mode script: verify / record / demo
+  fixtures.py      # GitHub issues.labeled webhook payload fixtures
+
+recordings/        # Record/replay cache (written by DEVIN_RECORD=1)
 
 docker-compose.yml # orchestrator + dashboard, shared SQLite volume
 Dockerfile
@@ -261,3 +272,76 @@ been recorded.
 ```bash
 export DEVIN_RECORDINGS_DIR=/path/to/custom/recordings
 ```
+
+## Validation & Demo
+
+`scripts/run_demo.py` provides three modes for testing and demonstrating the
+system. All modes communicate with the stack over HTTP; start it first with
+`docker compose up --build`.
+
+### `verify` — replay correctness (`DEVIN_REPLAY=1`)
+
+Runs four gates against the replay stack, exiting non-zero on the first failure:
+
+| Gate | What it checks | Likely fault layer on failure |
+|------|---------------|-------------------------------|
+| 1 — Stack Up | `/healthz` ok **and** dashboard URL responds | docker-compose / networking |
+| 2 — Dispatch + Classify | Batch dispatch of 3 findings → correct per-finding outcomes (`action_taken`, `pr_url`, `scan_clean_after`, `skipped`, `risk_flagged`) + dashboard aggregates (total, fixed, declined, finite ACUs-per-fix) | dispatch / classify / ReplayDevinClient |
+| 3 — Webhook Path | One `issues.labeled` event → one session → one DB row per finding | webhook handler / issue parser |
+| 4 — Idempotency + Reset | Duplicate webhook → no duplicate sessions; clean-reset → system at zero | idempotency guard / reset endpoint |
+
+```bash
+# Start the replay stack
+DEVIN_REPLAY=1 docker compose up --build -d
+
+# Run the correctness suite
+python -m scripts.run_demo verify
+```
+
+A passing run prints `ALL 4 GATES PASSED` and exits 0.
+
+### `record` — real-API capture (`DEVIN_REPLAY=0  DEVIN_RECORD=1`)
+
+Runs real Devin sessions and captures the results to `recordings/`.
+Requires `--yes` to confirm ACU spend.
+
+```bash
+# Start the real stack with recording enabled
+DEVIN_REPLAY=0 DEVIN_RECORD=1 docker compose up --build -d
+
+# Run the capture (consumes real ACUs)
+python -m scripts.run_demo record --yes
+```
+
+On completion the script:
+1. Confirms `recordings/<identifier>.json` was written for each finding.
+2. Prints a **CAPTURE CHECKLIST** with Devin session URLs, PR URLs (or
+   "declined — no PR"), the paramiko decline-comment issue URL, and the
+   dashboard URL — ready to copy into a doc for screen-recording.
+
+### `demo` — camera-ready replay (`DEVIN_REPLAY=1`)
+
+Dispatches findings one at a time with a configurable pause (`--pace N`,
+default 3 s) so the dashboard populates progressively on-screen. Prints
+human-readable step banners for terminal narration. Does **not** hard-assert
+(a tiny mismatch won't kill a take).
+
+```bash
+DEVIN_REPLAY=1 docker compose up --build -d
+python -m scripts.run_demo demo --pace 5
+```
+
+Ends with a final tally (2 fixed, 1 declined) and the dashboard URL to
+switch to.
+
+If `recordings/` contains files from a prior `record` run, the replay client
+uses those recorded outcomes (real ACU costs, real PR URLs) instead of the
+built-in defaults — making the demo indistinguishable from a live run.
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ORCHESTRATOR_URL` | `http://localhost:8000` | Base URL of the orchestrator service |
+| `DASHBOARD_URL` | `http://localhost:8001` | Base URL of the dashboard service |
+| `RECORDINGS_DIR` | `recordings` | Directory for record/replay JSON files |

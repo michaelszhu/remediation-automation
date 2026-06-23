@@ -167,6 +167,14 @@ def poll_terminal(
 # ===================================================================
 
 
+def _set_replay_config(defaults_only: bool) -> None:
+    """Tell the orchestrator to use defaults-only or recordings."""
+    try:
+        _post("/replay-config", json={"defaults_only": defaults_only})
+    except Exception:
+        pass  # endpoint may not exist on older builds
+
+
 def mode_verify() -> int:
     """Replay correctness gates (run with DEVIN_REPLAY=1)."""
 
@@ -176,6 +184,9 @@ def mode_verify() -> int:
         print("Start the stack with DEVIN_REPLAY=1 and retry:")
         print("  DEVIN_REPLAY=1 docker compose up --build")
         return 1
+
+    # Use built-in default recordings for deterministic verification
+    _set_replay_config(defaults_only=True)
 
     gate_count = 0
 
@@ -362,7 +373,7 @@ def mode_record(yes: bool) -> int:
     clean_reset()
 
     # -- Step 1: Scanner files issues on GitHub -----------------------------
-    issue_urls = _run_scanner_step(pace=1)
+    issue_urls = _run_scanner_step(pace=1, fresh=True)
     payloads = build_webhook_payloads(issue_urls) if issue_urls else WEBHOOK_PAYLOADS
 
     # -- Step 2: Dispatch via webhooks (real Devin sessions) ----------------
@@ -424,12 +435,15 @@ def mode_record(yes: bool) -> int:
 # ===================================================================
 
 
-def _run_scanner_step(pace: int = 2) -> dict[str, str]:
+def _run_scanner_step(pace: int = 2, fresh: bool = False) -> dict[str, str]:
     """Run the scanner and file GitHub issues for the 3 demo findings.
 
     Returns a mapping of identifier \u2192 issue URL.  If ``GITHUB_TOKEN``
     is not set, prints a simulated scanner and falls back to placeholder
     URLs from the static fixtures.
+
+    When *fresh* is True, close existing demo issues first so new ones
+    are always created.
     """
     banner("Step 1 \u2014 Security Scanner")
 
@@ -447,7 +461,15 @@ def _run_scanner_step(pace: int = 2) -> dict[str, str]:
 
     # Real scanner: import and run the issue filer
     from scanners.seed_demo_findings import DEMO_FINDINGS
-    from scanners.issue_filer import file_issues_detailed
+    from scanners.issue_filer import file_issues_detailed, close_existing_issues
+
+    if fresh:
+        step("Closing previous demo issues\u2026")
+        closed = close_existing_issues(DEMO_FINDINGS)
+        if closed:
+            print(f"    Closed {closed} existing issue(s)")
+        else:
+            print("    No existing issues to close")
 
     step("Running scanner against target repository\u2026")
     issue_urls: dict[str, str] = {}
@@ -481,7 +503,7 @@ def _run_scanner_step(pace: int = 2) -> dict[str, str]:
 # ===================================================================
 
 
-def mode_demo(pace: int) -> int:
+def mode_demo(pace: int, fresh: bool = False) -> int:
     """Camera-ready replay (DEVIN_REPLAY=1, replaying recordings/)."""
 
     if not healthz_ok():
@@ -491,11 +513,13 @@ def mode_demo(pace: int) -> int:
         return 1
 
     banner("MODE: demo (camera-ready)")
+    # Use real recordings when available
+    _set_replay_config(defaults_only=False)
     step("Clean-reset \u2014 dashboard starts EMPTY")
     clean_reset()
 
     # -- Step 1: Scanner files issues on GitHub -----------------------------
-    issue_urls = _run_scanner_step(pace=pace)
+    issue_urls = _run_scanner_step(pace=pace, fresh=fresh)
     payloads = build_webhook_payloads(issue_urls) if issue_urls else WEBHOOK_PAYLOADS
 
     # -- Step 2: Labeled issues trigger webhook \u2192 Devin sessions -----------
@@ -579,6 +603,11 @@ def main() -> int:
         default=3,
         help="Seconds between dispatches (default 3)",
     )
+    dem.add_argument(
+        "--fresh",
+        action="store_true",
+        help="Close existing demo issues and create new ones",
+    )
 
     args = parser.parse_args()
 
@@ -587,7 +616,7 @@ def main() -> int:
     if args.mode == "record":
         return mode_record(args.yes)
     if args.mode == "demo":
-        return mode_demo(args.pace)
+        return mode_demo(args.pace, fresh=args.fresh)
 
     parser.print_help()
     return 1

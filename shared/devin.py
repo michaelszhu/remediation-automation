@@ -127,7 +127,9 @@ class DevinClient(BaseDevinClient):
         self._record = record
         self._recordings_dir = Path(
             recordings_dir or os.getenv("DEVIN_RECORDINGS_DIR", DEFAULT_RECORDINGS_DIR)
-        )
+        ).resolve()
+        if self._record:
+            logger.info("Recording enabled — recordings dir: %s", self._recordings_dir)
         # session_id → identifier, populated by create_session
         self._session_identifiers: dict[str, str] = {}
 
@@ -209,7 +211,7 @@ class DevinClient(BaseDevinClient):
         self._recordings_dir.mkdir(parents=True, exist_ok=True)
         path = self._recordings_dir / f"{identifier}.json"
         path.write_text(json.dumps(payload, indent=2) + "\n")
-        logger.info("Recorded session %s → %s", session_id, path)
+        logger.info("Recorded session %s → %s (%d bytes)", session_id, path, path.stat().st_size)
 
 
 def _parse_session_response(data: dict[str, Any]) -> SessionInfo:
@@ -383,7 +385,8 @@ class ReplayDevinClient(BaseDevinClient):
         self._sessions: dict[str, dict[str, Any]] = {}
         self._recordings_dir = Path(
             recordings_dir or os.getenv("DEVIN_RECORDINGS_DIR", DEFAULT_RECORDINGS_DIR)
-        )
+        ).resolve()
+        logger.info("ReplayDevinClient recordings dir: %s", self._recordings_dir)
 
     def create_session(
         self,

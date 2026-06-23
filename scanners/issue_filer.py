@@ -67,7 +67,7 @@ def _ensure_label(client: httpx.Client, repo: str) -> None:
 
 
 def _existing_fingerprints(client: httpx.Client, repo: str) -> set[str]:
-    """Return the set of fingerprints already present in open issues."""
+    """Return the set of fingerprints already present in **open** issues."""
     fps: set[str] = set()
     page = 1
     while True:
@@ -75,7 +75,7 @@ def _existing_fingerprints(client: httpx.Client, repo: str) -> set[str]:
             f"https://api.github.com/repos/{repo}/issues",
             params={
                 "labels": ISSUE_LABEL,
-                "state": "all",
+                "state": "open",
                 "per_page": 100,
                 "page": page,
             },

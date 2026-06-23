@@ -1,1 +1,1 @@
-"""Scanners — ingest vulnerability findings. Filled in a later session."""
+"""Scanners — ingest vulnerability findings from SCA and SAST tools."""

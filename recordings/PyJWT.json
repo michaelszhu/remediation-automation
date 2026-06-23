@@ -1,0 +1,28 @@
+{
+  "session_id": "e624fe1092804bf9b425a23c38b7cb87",
+  "status": "running",
+  "acus_consumed": 0.0,
+  "pull_requests": [],
+  "structured_output": {
+    "pr_url": null,
+    "status": "success",
+    "skipped": [],
+    "addressed": [
+      "CVE-2022-29217"
+    ],
+    "reasoning": "CVE-2022-29217 is a false positive for this repository. The CVE affects PyJWT versions before 2.4.0 (algorithm confusion attack allowing HMAC forgery with asymmetric public keys). The installed version is PyJWT 2.12.0, which is well above the fix version. Evidence: (1) requirements/base.txt pins pyjwt==2.12.0; (2) pyproject.toml specifies PyJWT>=2.4.0,<3.0, explicitly excluding vulnerable versions; (3) Runtime verification confirms PyJWT 2.12.0 enforces the algorithms parameter in jwt.decode() \u2014 calling decode() without algorithms raises DecodeError; (4) All jwt.decode() calls in the codebase correctly specify the algorithms parameter (async_query_manager.py:215 uses algorithms=['HS256'], oauth2.py:262 uses algorithms=[config value], mcp_service/jwt_verifier.py uses python-jose not PyJWT). The scanner incorrectly flagged this CVE against a version that already contains the fix.",
+    "finding_id": "finding-pyjwt-001",
+    "identifier": "PyJWT",
+    "action_taken": "false_positive",
+    "finding_type": "sca",
+    "risk_flagged": null,
+    "tests_passed": null,
+    "files_changed": [],
+    "scan_clean_after": null
+  },
+  "tags": [
+    "devin-remediate",
+    "sca",
+    "agent:devin-rs"
+  ]
+}

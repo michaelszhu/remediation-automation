@@ -1,0 +1,31 @@
+{
+  "session_id": "920f354bc3394340a42d4467d276547e",
+  "status": "running",
+  "acus_consumed": 0.0,
+  "pull_requests": [],
+  "structured_output": {
+    "pr_url": null,
+    "status": "success",
+    "skipped": [
+      {
+        "item": "CVE-2023-48795",
+        "reason": "paramiko 3.5.1 already includes the Terrapin attack fix (strict KEX extension support added in paramiko 3.4.0). The pyproject.toml constraint >=3.4.0 enforces this minimum. Verified strict KEX code (kex-strict-*-v00@openssh.com) is present in paramiko 3.5.1 transport source at lines 2453, 2543, 2546. The scanner's version-to-CVE mapping is incorrect for this package version."
+      }
+    ],
+    "addressed": [],
+    "reasoning": "CVE-2023-48795 (Terrapin SSH prefix-truncation attack) was fixed in paramiko 3.4.0 with strict key-exchange extension support. The repo installs paramiko 3.5.1 (pinned in requirements/base.txt:279 and requirements/development.txt:650), which is above the fix version. The pyproject.toml (line 91) enforces paramiko>=3.4.0,<4.0, guaranteeing the fix floor. I verified the strict KEX negotiation code is present in the installed paramiko 3.5.1 source (paramiko/transport.py lines 2453, 2543, 2546). paramiko is used in superset/extensions/ssh.py for SSH tunnel connections via Transport.start_client() \u2014 exactly the code path where the Terrapin mitigation applies. This is a false positive: the scanner flagged the package without recognizing that version 3.5.1 already contains the fix. Posted verification findings as a comment on issue #6 (https://github.com/michaelszhu/superset/issues/6#issuecomment-4783453126). Note: the source_issue_url (#101) does not exist; #6 is the actual tracking issue.",
+    "finding_id": "finding-paramiko-001",
+    "identifier": "paramiko",
+    "action_taken": "false_positive",
+    "finding_type": "sca",
+    "risk_flagged": null,
+    "tests_passed": null,
+    "files_changed": [],
+    "scan_clean_after": null
+  },
+  "tags": [
+    "devin-remediate",
+    "sca",
+    "agent:devin-rs"
+  ]
+}

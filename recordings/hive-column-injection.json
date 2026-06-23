@@ -1,7 +1,7 @@
 {
   "session_id": "f39d610e6fbb4dd79af173a397d3a77b",
   "status": "running",
-  "acus_consumed": 0.0,
+  "acus_consumed": 8.5,
   "pull_requests": [
     {
       "pr_url": "https://github.com/michaelszhu/superset/pull/8",

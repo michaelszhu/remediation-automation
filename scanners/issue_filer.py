@@ -221,3 +221,43 @@ def _find_existing_issue_url(
                 return issue.get("html_url")
         page += 1
     return None
+
+
+def close_existing_issues(findings: list[Finding]) -> int:
+    """Close all open issues whose body contains a fingerprint for any of
+    the given findings.  Returns the number of issues closed."""
+    repo = _repo_slug()
+    headers = _github_headers()
+    fps = {fingerprint(f) for f in findings}
+    closed = 0
+
+    with httpx.Client(headers=headers, timeout=30) as client:
+        page = 1
+        while True:
+            resp = client.get(
+                f"https://api.github.com/repos/{repo}/issues",
+                params={
+                    "labels": ISSUE_LABEL,
+                    "state": "open",
+                    "per_page": 100,
+                    "page": page,
+                },
+            )
+            issues = resp.json()
+            if not issues:
+                break
+            for issue in issues:
+                body = issue.get("body") or ""
+                for fp in fps:
+                    if fp in body:
+                        number = issue["number"]
+                        client.patch(
+                            f"https://api.github.com/repos/{repo}/issues/{number}",
+                            json={"state": "closed"},
+                        )
+                        print(f"  Closed issue #{number}: {issue.get('html_url', '')}")
+                        closed += 1
+                        break
+            page += 1
+
+    return closed

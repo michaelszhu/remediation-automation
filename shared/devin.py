@@ -38,6 +38,16 @@ DEFAULT_RECORDINGS_DIR = "recordings"
 
 API_BASE = "https://api.devin.ai/v3"
 
+# When True, the ReplayDevinClient ignores recording files and uses
+# built-in default recordings only.  Toggled by the orchestrator's
+# /replay-config endpoint so that ``verify`` mode is deterministic.
+_replay_defaults_only: bool = False
+
+
+def set_replay_defaults_only(value: bool) -> None:
+    global _replay_defaults_only
+    _replay_defaults_only = value
+
 
 # ---------------------------------------------------------------------------
 # Response containers
@@ -231,7 +241,7 @@ class DevinClient(BaseDevinClient):
 
     def _persist_recording(self, session_id: str, info: SessionInfo) -> None:
         identifier = self._session_identifiers.get(session_id, session_id)
-        payload = {
+        payload: dict[str, Any] = {
             "session_id": info.session_id,
             "status": info.status.value,
             "acus_consumed": info.acus_consumed,
@@ -239,6 +249,8 @@ class DevinClient(BaseDevinClient):
             "structured_output": info.structured_output,
             "tags": info.tags,
         }
+        if info.status_detail:
+            payload["status_detail"] = info.status_detail
         self._recordings_dir.mkdir(parents=True, exist_ok=True)
         path = self._recordings_dir / f"{identifier}.json"
         path.write_text(json.dumps(payload, indent=2) + "\n")
@@ -447,13 +459,25 @@ class ReplayDevinClient(BaseDevinClient):
         session_id = f"devin-replay-{identifier}"
         url = f"https://app.devin.ai/sessions/{session_id}"
 
-        recorded = _load_recording(identifier, self._recordings_dir)
+        recorded = (
+            _load_recording(identifier, self._recordings_dir)
+            if not _replay_defaults_only
+            else None
+        )
         if recorded is not None:
             logger.info("Replaying recording for %r", identifier)
             payload = dict(recorded)
             payload["session_id"] = session_id
             if tags is not None:
                 payload.setdefault("tags", tags)
+            # Recordings captured in waiting_for_user state may lack
+            # status_detail.  Infer it so _session_effectively_done works.
+            if (
+                payload.get("status") == "running"
+                and payload.get("structured_output")
+                and not payload.get("status_detail")
+            ):
+                payload["status_detail"] = "waiting_for_user"
         else:
             default = self._match_default_recording(prompt)
             if default is not _UNKNOWN_RECORDING:

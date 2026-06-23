@@ -236,6 +236,21 @@ _DEMO_SEED_FINDINGS = [
 ]
 
 
+@app.post("/replay-config")
+async def replay_config(request: Request) -> dict[str, Any]:
+    """Configure replay behaviour at runtime.
+
+    Body: ``{"defaults_only": true}`` to ignore recording files and use
+    built-in default fixtures only (used by verify mode).
+    """
+    from shared.devin import set_replay_defaults_only
+
+    body = await request.json()
+    val = bool(body.get("defaults_only", False))
+    set_replay_defaults_only(val)
+    return {"defaults_only": val}
+
+
 @app.post("/reset")
 async def reset() -> dict[str, str]:
     """Clear all findings and sessions \u2014 dev/test utility."""

@@ -12,6 +12,10 @@ services:
     ports:
       - "8000:8000"
     env_file: .env
+    environment:
+      - DEVIN_REPLAY=${DEVIN_REPLAY:-0}
+      - DEVIN_RECORD=${DEVIN_RECORD:-0}
+      - DEVIN_RECORDINGS_DIR=/app/recordings
     volumes:
       - db-data:/data
       - ./recordings:/app/recordings
@@ -25,6 +29,9 @@ services:
     ports:
       - "8001:8001"
     env_file: .env
+    environment:
+      - DEVIN_REPLAY=${DEVIN_REPLAY:-0}
+      - DEVIN_RECORDINGS_DIR=/app/recordings
     volumes:
       - db-data:/data
       - ./recordings:/app/recordings

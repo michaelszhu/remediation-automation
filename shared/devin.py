@@ -1,8 +1,10 @@
-"""Devin API client (v3) and mock implementation.
+"""Devin API client (v3) with record/replay mock support.
 
 Real client: talks to ``https://api.devin.ai/v3/organizations/{org_id}/sessions``.
-Mock client: activated when ``DEVIN_MOCK=1``; returns canned structured outputs
-for the three demo findings so the full system runs without a Devin key.
+Mock client: activated when ``DEVIN_MOCK=1``; replays recorded payloads from
+``recordings/*.json`` (falling back to inline fixtures when no recording exists).
+Recording: when ``DEVIN_RECORD=1``, the real client persists each session's
+terminal payload to ``recordings/<identifier>.json`` as a side effect.
 
 Usage::
 
@@ -15,16 +17,23 @@ Usage::
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import os
 import time
-import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 import httpx
 
 from shared.models import TERMINAL_STATUSES, SessionStatus
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_RECORDINGS_DIR = "recordings"
 
 API_BASE = "https://api.devin.ai/v3"
 
@@ -103,6 +112,9 @@ class DevinClient(BaseDevinClient):
         self,
         api_key: str | None = None,
         org_id: str | None = None,
+        *,
+        record: bool = False,
+        recordings_dir: str | None = None,
     ) -> None:
         self._api_key = api_key or os.environ["DEVIN_API_KEY"]
         self._org_id = org_id or os.environ["DEVIN_ORG_ID"]
@@ -111,6 +123,12 @@ class DevinClient(BaseDevinClient):
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
+        self._record = record
+        self._recordings_dir = Path(
+            recordings_dir or os.getenv("DEVIN_RECORDINGS_DIR", DEFAULT_RECORDINGS_DIR)
+        )
+        # session_id → identifier, populated by create_session
+        self._session_identifiers: dict[str, str] = {}
 
     # -- create -------------------------------------------------------------
 
@@ -143,10 +161,16 @@ class DevinClient(BaseDevinClient):
         resp = httpx.post(self._base, json=body, headers=self._headers, timeout=30)
         resp.raise_for_status()
         data = resp.json()
-        return CreateSessionResult(
+        result = CreateSessionResult(
             session_id=data["session_id"],
             url=data["url"],
         )
+
+        if self._record:
+            identifier = _extract_identifier(prompt, tags)
+            self._session_identifiers[result.session_id] = identifier
+
+        return result
 
     # -- get ----------------------------------------------------------------
 
@@ -155,6 +179,36 @@ class DevinClient(BaseDevinClient):
         resp = httpx.get(url, headers=self._headers, timeout=30)
         resp.raise_for_status()
         return _parse_session_response(resp.json())
+
+    # -- poll (override to add recording side-effect) -----------------------
+
+    def poll_until_terminal(
+        self,
+        session_id: str,
+        interval: float = 30.0,
+        timeout: float = 7200.0,
+    ) -> SessionInfo:
+        info = super().poll_until_terminal(session_id, interval, timeout)
+        if self._record:
+            self._persist_recording(session_id, info)
+        return info
+
+    # -- recording ----------------------------------------------------------
+
+    def _persist_recording(self, session_id: str, info: SessionInfo) -> None:
+        identifier = self._session_identifiers.get(session_id, session_id)
+        payload = {
+            "session_id": info.session_id,
+            "status": info.status.value,
+            "acus_consumed": info.acus_consumed,
+            "pull_requests": info.pull_requests,
+            "structured_output": info.structured_output,
+            "tags": info.tags,
+        }
+        self._recordings_dir.mkdir(parents=True, exist_ok=True)
+        path = self._recordings_dir / f"{identifier}.json"
+        path.write_text(json.dumps(payload, indent=2) + "\n")
+        logger.info("Recorded session %s → %s", session_id, path)
 
 
 def _parse_session_response(data: dict[str, Any]) -> SessionInfo:
@@ -172,6 +226,7 @@ def _parse_session_response(data: dict[str, Any]) -> SessionInfo:
 # Mock client — canned responses for demo findings
 # ---------------------------------------------------------------------------
 
+# Inline fallback fixtures (used when no recording file exists)
 _MOCK_FIXTURES: dict[str, dict[str, Any]] = {
     "paramiko": {
         "finding_id": "finding-paramiko-001",
@@ -267,11 +322,67 @@ _MOCK_FIXTURES: dict[str, dict[str, Any]] = {
 }
 
 
-class MockDevinClient(BaseDevinClient):
-    """Returns canned responses keyed by finding identifier (extracted from prompt)."""
+_UNKNOWN_FIXTURE: dict[str, Any] = {
+    "finding_id": "finding-unknown",
+    "finding_type": "sca",
+    "identifier": "unknown",
+    "action_taken": "declined",
+    "status": "needs_review",
+    "pr_url": None,
+    "files_changed": [],
+    "addressed": [],
+    "skipped": [],
+    "reasoning": "No matching fixture found for prompt.",
+    "tests_passed": None,
+    "scan_clean_after": None,
+    "risk_flagged": None,
+}
 
-    def __init__(self) -> None:
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _extract_identifier(prompt: str, tags: list[str] | None = None) -> str:
+    """Best-effort identifier extraction from prompt text or tags."""
+    for key in _MOCK_FIXTURES:
+        if key.lower() in prompt.lower():
+            return key
+    if tags:
+        for tag in tags:
+            if tag not in ("devin-remediate", "sca", "sast"):
+                return tag
+    return hashlib.sha256(prompt.encode()).hexdigest()[:12]
+
+
+def _load_recording(
+    identifier: str,
+    recordings_dir: Path,
+) -> dict[str, Any] | None:
+    """Load a recorded payload for *identifier*, or return ``None``."""
+    path = recordings_dir / f"{identifier}.json"
+    if not path.is_file():
+        return None
+    try:
+        return json.loads(path.read_text())  # type: ignore[no-any-return]
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("Failed to load recording %s: %s", path, exc)
+        return None
+
+
+class MockDevinClient(BaseDevinClient):
+    """Replay client: loads recorded payloads from ``recordings/*.json``.
+
+    Falls back to the inline ``_MOCK_FIXTURES`` when no recording file exists
+    for a given identifier, and logs a warning so operators know a real
+    recording is missing.
+    """
+
+    def __init__(self, recordings_dir: str | None = None) -> None:
         self._sessions: dict[str, dict[str, Any]] = {}
+        self._recordings_dir = Path(
+            recordings_dir or os.getenv("DEVIN_RECORDINGS_DIR", DEFAULT_RECORDINGS_DIR)
+        )
 
     def create_session(
         self,
@@ -284,22 +395,43 @@ class MockDevinClient(BaseDevinClient):
         max_acu_limit: int | None = None,
         title: str | None = None,
     ) -> CreateSessionResult:
-        session_id = f"devin-mock-{uuid.uuid4().hex[:12]}"
+        identifier = _extract_identifier(prompt, tags)
+        session_id = f"devin-mock-{identifier}"
         url = f"https://app.devin.ai/sessions/{session_id}"
 
-        fixture = self._match_fixture(prompt)
-        self._sessions[session_id] = {
-            "session_id": session_id,
-            "status": SessionStatus.EXIT.value,
-            "acus_consumed": 1.5,
-            "pull_requests": (
-                [{"pr_url": fixture["pr_url"], "pr_state": "open"}]
-                if fixture.get("pr_url")
-                else []
-            ),
-            "structured_output": fixture,
-            "tags": tags or [],
-        }
+        recorded = _load_recording(identifier, self._recordings_dir)
+        if recorded is not None:
+            logger.info("Replaying recording for %r", identifier)
+            payload = dict(recorded)
+            payload["session_id"] = session_id
+            if tags is not None:
+                payload.setdefault("tags", tags)
+        else:
+            fixture = self._match_fallback_fixture(prompt)
+            if fixture is not _UNKNOWN_FIXTURE:
+                logger.warning(
+                    "No recording found for %r — falling back to inline fixture",
+                    identifier,
+                )
+            else:
+                logger.warning(
+                    "No recording or inline fixture for %r — using unknown fallback",
+                    identifier,
+                )
+            payload = {
+                "session_id": session_id,
+                "status": SessionStatus.EXIT.value,
+                "acus_consumed": 1.5,
+                "pull_requests": (
+                    [{"pr_url": fixture["pr_url"], "pr_state": "open"}]
+                    if fixture.get("pr_url")
+                    else []
+                ),
+                "structured_output": fixture,
+                "tags": tags or [],
+            }
+
+        self._sessions[session_id] = payload
         return CreateSessionResult(session_id=session_id, url=url)
 
     def get_session(self, session_id: str) -> SessionInfo:
@@ -309,26 +441,13 @@ class MockDevinClient(BaseDevinClient):
         return _parse_session_response(data)
 
     @staticmethod
-    def _match_fixture(prompt: str) -> dict[str, Any]:
+    def _match_fallback_fixture(prompt: str) -> dict[str, Any]:
+        """Match against inline fixtures (kept as fallback defaults)."""
         prompt_lower = prompt.lower()
         for key, fixture in _MOCK_FIXTURES.items():
             if key.lower() in prompt_lower:
                 return fixture
-        return {
-            "finding_id": "finding-unknown",
-            "finding_type": "sca",
-            "identifier": "unknown",
-            "action_taken": "declined",
-            "status": "needs_review",
-            "pr_url": None,
-            "files_changed": [],
-            "addressed": [],
-            "skipped": [],
-            "reasoning": "No matching fixture found for prompt.",
-            "tests_passed": None,
-            "scan_clean_after": None,
-            "risk_flagged": None,
-        }
+        return _UNKNOWN_FIXTURE
 
 
 # ---------------------------------------------------------------------------
@@ -336,7 +455,8 @@ class MockDevinClient(BaseDevinClient):
 # ---------------------------------------------------------------------------
 
 def get_devin_client() -> BaseDevinClient:
-    """Return the real or mock client based on the ``DEVIN_MOCK`` env var."""
+    """Return the real or mock client based on ``DEVIN_MOCK`` / ``DEVIN_RECORD``."""
     if os.getenv("DEVIN_MOCK", "").strip() == "1":
         return MockDevinClient()
-    return DevinClient()
+    record = os.getenv("DEVIN_RECORD", "").strip() == "1"
+    return DevinClient(record=record)

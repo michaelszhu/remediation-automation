@@ -34,6 +34,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(message)s
 async def lifespan(app: FastAPI):
     init_db()
     logger.info("Database initialized")
+    replay = os.getenv("DEVIN_REPLAY", "0").strip()
+    record = os.getenv("DEVIN_RECORD", "0").strip()
+    if replay == "1":
+        logger.info("Mode: REPLAY (DEVIN_REPLAY=1) — using ReplayDevinClient with built-in fixtures")
+    elif record == "1":
+        logger.info("Mode: RECORD (DEVIN_RECORD=1) — using real DevinClient, recording sessions")
+    else:
+        logger.info("Mode: LIVE (DEVIN_REPLAY=%s) — using real DevinClient against Devin API", replay)
     yield
 
 

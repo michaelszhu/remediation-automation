@@ -78,7 +78,9 @@ cp .env.example .env
 docker compose up --build
 ```
 
-The `MockDevinClient` returns realistic canned outputs for three demo findings:
+The `MockDevinClient` replays recorded session payloads from `recordings/*.json`.
+If no recording exists for a finding, it falls back to built-in fixtures for
+the three demo findings:
 
 | Identifier              | action_taken | status       | Notes                                      |
 |-------------------------|--------------|--------------|--------------------------------------------|
@@ -114,7 +116,8 @@ The shared contract that all other components import. Contains:
   `REMEDIATION_OUTPUT_SCHEMA` (JSON Schema Draft 7), and tag helpers.
 - **`db.py`** — SQLite schema init, `upsert_finding`, `upsert_session`,
   `get_session`, `list_sessions`, `list_findings`.
-- **`devin.py`** — `DevinClient` (v3 API), `MockDevinClient` (canned fixtures),
+- **`devin.py`** — `DevinClient` (v3 API) with optional recording layer,
+  `MockDevinClient` (record/replay with inline fallbacks),
   `get_devin_client()` factory.
 - **`config.py`** — Lazy env-var accessors.
 
@@ -156,7 +159,9 @@ optionally file them as labelled GitHub issues.
 |----------------------|----------|--------------------------|------------------------------------------|
 | `DEVIN_API_KEY`      | Yes*     | —                        | Service-user Bearer token                |
 | `DEVIN_ORG_ID`       | Yes*     | —                        | Organization ID (`org-...`)              |
-| `DEVIN_MOCK`         | No       | `0`                      | Set to `1` for mock mode                 |
+| `DEVIN_MOCK`         | No       | `0`                      | Set to `1` for mock/replay mode          |
+| `DEVIN_RECORD`       | No       | `0`                      | Set to `1` to record real session outputs |
+| `DEVIN_RECORDINGS_DIR`| No      | `recordings`             | Directory for recorded session payloads  |
 | `PLAYBOOK_ID`        | No       | —                        | Devin playbook for remediation sessions  |
 | `MAX_CONCURRENCY`    | No       | `3`                      | Max parallel Devin sessions              |
 | `MAX_ACU_LIMIT`      | No       | `10`                     | ACU budget per session                   |
@@ -211,3 +216,43 @@ Both scanners print findings to stdout in JSON and accept `--file-issues` to
 create labelled issues on the fork via the GitHub API.  Re-running is safe —
 the issue filer skips any finding whose fingerprint already appears in an
 existing issue.
+
+## Record / Replay (Mock Mode)
+
+The Devin client supports a **record/replay** pattern so mock mode replays
+real session outputs instead of hand-written fixtures.
+
+### Step 1 — Record real session outputs
+
+Run the orchestrator against the real Devin API with recording enabled:
+
+```bash
+DEVIN_MOCK=0 DEVIN_RECORD=1 python -m orchestrator.main
+```
+
+After each session reaches terminal state, its full payload (status,
+`acus_consumed`, `pull_requests`, `structured_output`, `tags`) is written to
+`recordings/<identifier>.json`.  Commit these files to the repo.
+
+### Step 2 — Replay in mock mode
+
+All later runs with `DEVIN_MOCK=1` replay the recorded payloads:
+
+```bash
+DEVIN_MOCK=1 python -m orchestrator.main
+```
+
+`MockDevinClient.create_session()` returns a stable deterministic session ID
+per identifier.  `get_session()` returns the recorded terminal payload.
+`poll_until_terminal()` returns immediately (already terminal).
+
+If a recording is missing for a given identifier, the client falls back to the
+built-in inline fixtures (paramiko, PyJWT, hive-column-injection) and logs a
+warning.  This means the system works out of the box before any real run has
+been recorded.
+
+### Overriding the recordings directory
+
+```bash
+export DEVIN_RECORDINGS_DIR=/path/to/custom/recordings
+```

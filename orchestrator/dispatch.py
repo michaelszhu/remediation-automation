@@ -30,36 +30,43 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 PROMPT_TEMPLATE = """\
-You are remediating a security finding. Follow the remediation Playbook exactly.
+Remediate the following security finding by following the Security Finding
+Remediation playbook exactly.
 
-## Finding Details
+finding_id:   {finding_id}
+finding_type: {finding_type}        # "sca" or "sast"
+identifier:   {identifier}          # package name or scanner rule id
+severity:     {severity}
+details:
+{raw_details}
+source issue: {source_issue_url}
 
-- **Type**: {finding_type}
-- **Identifier**: {identifier}
-- **Title**: {title}
-- **Severity**: {severity}
-- **Source Issue**: {source_issue_url}
+Target repository: {repo}  (branch: {base_branch})
 
-## Instructions
-
-1. Analyze the finding above in the target repository.
-2. Follow the remediation Playbook (attached by ID) for step-by-step guidance.
-3. Implement the fix, run tests, and open a PR if changes are made.
-4. If the fix introduces unacceptable risk, decline and explain why.
-5. Return your results via the required structured output schema.
+Investigate how this finding actually manifests in THIS repository before acting.
+Decide the correct action per the playbook \u2014 fix, decline, or false-positive \u2014 and
+execute it. Do not suppress scanners or mask tests; a real fix or an honest decline
+only. When done, return the structured output exactly as the playbook\u2019s schema
+specifies.
 """
 
 
-def build_prompt(finding: Finding) -> str:
+def build_prompt(finding: Finding, *, repo: str, base_branch: str = "main") -> str:
     """Fill the parameterized template with finding details."""
+    import json
+
+    raw_details = json.dumps(finding.raw_details, indent=2) if finding.raw_details else ""
     return PROMPT_TEMPLATE.format(
+        finding_id=finding.finding_id,
         finding_type=finding.finding_type.value
         if hasattr(finding.finding_type, "value")
         else finding.finding_type,
         identifier=finding.identifier,
-        title=finding.title,
         severity=finding.severity,
+        raw_details=raw_details,
         source_issue_url=finding.source_issue_url,
+        repo=repo,
+        base_branch=base_branch,
     )
 
 
@@ -95,10 +102,11 @@ async def dispatch_finding(finding: Finding) -> SessionRecord:
 async def _dispatch_inner(finding: Finding) -> SessionRecord:
     """Internal dispatch — runs under the semaphore."""
     client = get_devin_client()
-    prompt = build_prompt(finding)
     playbook_id = config.PLAYBOOK_ID() or None
     max_acu = config.MAX_ACU_LIMIT()
-    repos = [config.SUPERSET_FORK_REPO()]
+    repo = config.SUPERSET_FORK_REPO()
+    repos = [repo]
+    prompt = build_prompt(finding, repo=repo)
     tags = remediation_tags(finding.finding_type)
 
     # 1. Persist finding

@@ -14,6 +14,7 @@ services:
     env_file: .env
     volumes:
       - db-data:/data
+      - ./recordings:/app/recordings
     depends_on: []
 
   dashboard:
@@ -26,5 +27,6 @@ services:
     env_file: .env
     volumes:
       - db-data:/data
+      - ./recordings:/app/recordings
     depends_on:
       - orchestrator

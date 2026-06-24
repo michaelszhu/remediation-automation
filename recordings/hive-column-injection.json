@@ -1,34 +1,34 @@
 {
-  "session_id": "14b559d957a145f7a540e6ddaa0bf69a",
+  "session_id": "7920781a6b3b4f3b8c6c3a8be17fe32a",
   "status": "running",
-  "acus_consumed": 8.5,
+  "acus_consumed": 0.0,
   "pull_requests": [
     {
-      "pr_url": "https://github.com/michaelszhu/superset/pull/40",
+      "pr_url": "https://github.com/michaelszhu/superset/pull/53",
       "pr_state": "open"
     }
   ],
   "structured_output": {
-    "pr_url": "https://github.com/michaelszhu/superset/pull/40",
+    "pr_url": "https://github.com/michaelszhu/superset/pull/53",
     "status": "success",
     "skipped": [],
     "addressed": [
-      "hive-column-injection"
+      "hive-column-injection: unsanitized partition column names in HiveEngineSpec.where_latest_partition() and PrestoEngineSpec.where_latest_partition()"
     ],
-    "reasoning": "Confirmed real vulnerability: HiveEngineSpec.where_latest_partition() and PrestoEngineSpec.where_latest_partition() pass partition column names from database.get_indexes() directly into sqlalchemy.Column() without explicit identifier quoting. A user with sql_lab role who can create datasets pointing at a Hive/Presto table with crafted partition metadata column names could inject SQL into the generated WHERE clause. Fixed by wrapping col_name with sqlalchemy.sql.quoted_name(col_name, quote=True) to force dialect-specific identifier quoting, matching existing codebase patterns (e.g. base.py:2221).",
-    "finding_id": "finding-77f0e1e116f2",
+    "reasoning": "Partition column names from database.get_indexes() (Hive metastore metadata) were passed directly to sqlalchemy.Column() without validation. A sql_lab user could create a table with malicious partition column names that would flow unsanitized into query construction when another user views that table via select_star. Fixed by adding SAFE_IDENTIFIER_REGEX (^[a-zA-Z0-9_]+$) validation in both PrestoEngineSpec and HiveEngineSpec where_latest_partition methods. If validation fails, the method returns None and logs a warning. Tests confirm malicious names are rejected and safe names continue to work.",
+    "finding_id": "finding-fda675e4fca3",
     "identifier": "hive-column-injection",
     "action_taken": "fixed",
     "finding_type": "sast",
     "risk_flagged": null,
     "tests_passed": true,
     "files_changed": [
-      "superset/db_engine_specs/hive.py",
       "superset/db_engine_specs/presto.py",
-      "tests/unit_tests/db_engine_specs/test_hive.py",
-      "tests/integration_tests/db_engine_specs/hive_tests.py"
+      "superset/db_engine_specs/hive.py",
+      "tests/unit_tests/db_engine_specs/test_presto.py",
+      "tests/unit_tests/db_engine_specs/test_hive.py"
     ],
-    "scan_clean_after": true
+    "scan_clean_after": null
   },
   "tags": [
     "devin-remediate",

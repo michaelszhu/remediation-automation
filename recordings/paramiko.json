@@ -1,5 +1,5 @@
 {
-  "session_id": "920f354bc3394340a42d4467d276547e",
+  "session_id": "739f3ced936945f0be3deea823506dab",
   "status": "running",
   "acus_consumed": 0.0,
   "pull_requests": [],
@@ -9,16 +9,16 @@
     "skipped": [
       {
         "item": "CVE-2023-48795",
-        "reason": "paramiko 3.5.1 already includes the Terrapin attack fix (strict KEX extension support added in paramiko 3.4.0). The pyproject.toml constraint >=3.4.0 enforces this minimum. Verified strict KEX code (kex-strict-*-v00@openssh.com) is present in paramiko 3.5.1 transport source at lines 2453, 2543, 2546. The scanner's version-to-CVE mapping is incorrect for this package version."
+        "reason": "False positive: CVE-2023-48795 (Terrapin SSH attack) was fixed in paramiko 3.4.0 via strict key exchange support. The repo pins paramiko>=3.4.0,<4.0 in pyproject.toml (line 91) and the lock file (requirements/base.txt line 279) resolves to paramiko==3.5.1, which is above the fix version. The OSV advisory GHSA-45x7-px36-x8w8 confirms the affected range is paramiko 2.5.0 to <3.4.0. PyPI's vulnerability API returns zero CVE-2023-48795 entries for paramiko 3.5.1."
       }
     ],
     "addressed": [],
-    "reasoning": "CVE-2023-48795 (Terrapin SSH prefix-truncation attack) was fixed in paramiko 3.4.0 with strict key-exchange extension support. The repo installs paramiko 3.5.1 (pinned in requirements/base.txt:279 and requirements/development.txt:650), which is above the fix version. The pyproject.toml (line 91) enforces paramiko>=3.4.0,<4.0, guaranteeing the fix floor. I verified the strict KEX negotiation code is present in the installed paramiko 3.5.1 source (paramiko/transport.py lines 2453, 2543, 2546). paramiko is used in superset/extensions/ssh.py for SSH tunnel connections via Transport.start_client() \u2014 exactly the code path where the Terrapin mitigation applies. This is a false positive: the scanner flagged the package without recognizing that version 3.5.1 already contains the fix. Posted verification findings as a comment on issue #6 (https://github.com/michaelszhu/superset/issues/6#issuecomment-4783453126). Note: the source_issue_url (#101) does not exist; #6 is the actual tracking issue.",
-    "finding_id": "finding-paramiko-001",
+    "reasoning": "CVE-2023-48795 is the Terrapin SSH prefix truncation attack. Paramiko addressed it in version 3.4.0 by implementing strict key exchange (strict kex). The repo's pyproject.toml (line 91) declares paramiko>=3.4.0,<4.0, and the lock file (requirements/base.txt line 279) pins paramiko==3.5.1 \u2014 well above the 3.4.0 fix. Verified via the OSV advisory database (GHSA-45x7-px36-x8w8) that the affected range for paramiko is 2.5.0 to <3.4.0. Also confirmed via PyPI JSON API that paramiko 3.5.1 has zero CVE-2023-48795 entries (while paramiko 3.3.2 correctly shows it). The issue description's claim that 'paramiko 3.5.1 has CVE-2023-48795' is factually incorrect \u2014 the scanner that produced this finding has an outdated or incorrect vulnerability database. The <4.0 upper bound exists because sshtunnel 0.4.0 references paramiko.DSSKey (at sshtunnel.py:1093 and :1298), which was removed in paramiko 4.0 \u2014 this is an unrelated compatibility constraint. No code changes are warranted. Findings posted as a comment on the source issue: https://github.com/michaelszhu/superset/issues/37#issuecomment-4785838683",
+    "finding_id": "finding-b2aa6430e63f",
     "identifier": "paramiko",
     "action_taken": "false_positive",
     "finding_type": "sca",
-    "risk_flagged": null,
+    "risk_flagged": "Note: paramiko 3.5.1 does have a separate, unrelated vulnerability CVE-2026-44405 (SHA-1 algorithm in rsakey.py, fixed only in paramiko 5.0.0). Upgrading to 5.0.0 is blocked by sshtunnel 0.4.0's reference to paramiko.DSSKey (removed in paramiko 4.0). This is a separate finding and not part of this CVE-2023-48795 assessment.",
     "tests_passed": null,
     "files_changed": [],
     "scan_clean_after": null
@@ -27,5 +27,6 @@
     "devin-remediate",
     "sca",
     "agent:devin-rs"
-  ]
+  ],
+  "status_detail": "waiting_for_user"
 }

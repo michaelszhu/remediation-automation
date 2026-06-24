@@ -1,22 +1,22 @@
 {
-  "session_id": "f39d610e6fbb4dd79af173a397d3a77b",
+  "session_id": "14b559d957a145f7a540e6ddaa0bf69a",
   "status": "running",
   "acus_consumed": 0.0,
   "pull_requests": [
     {
-      "pr_url": "https://github.com/michaelszhu/superset/pull/8",
+      "pr_url": "https://github.com/michaelszhu/superset/pull/40",
       "pr_state": "open"
     }
   ],
   "structured_output": {
-    "pr_url": "https://github.com/michaelszhu/superset/pull/8",
+    "pr_url": "https://github.com/michaelszhu/superset/pull/40",
     "status": "success",
     "skipped": [],
     "addressed": [
-      "hive-column-injection: DataFrame column names in df_to_sql() CREATE TABLE statement now have backticks escaped via .replace('`', '``'), preventing HiveQL injection through malicious column names"
+      "hive-column-injection"
     ],
-    "reasoning": "In HiveEngineSpec.df_to_sql() (line 249-250), DataFrame column names were interpolated into the CREATE TABLE SQL statement using backtick quoting (`{name}`) but without escaping backtick characters within the names. A malicious CSV column name like evil`col` INT); -- could break out of the backtick-quoted identifier and inject arbitrary HiveQL. The rest of the file already uses .replace('`', '``') for table names (line 512), schema names (lines 219, 514, 645) \u2014 this was the one place the pattern was missing. The fix adds the same escaping to column names. A unit test (test_df_to_sql_escapes_column_backticks) was added that creates a DataFrame with a backtick-containing column name and verifies the generated SQL contains properly doubled backticks. All 9 unit tests pass.",
-    "finding_id": "finding-hive-injection-001",
+    "reasoning": "Confirmed real vulnerability: HiveEngineSpec.where_latest_partition() and PrestoEngineSpec.where_latest_partition() pass partition column names from database.get_indexes() directly into sqlalchemy.Column() without explicit identifier quoting. A user with sql_lab role who can create datasets pointing at a Hive/Presto table with crafted partition metadata column names could inject SQL into the generated WHERE clause. Fixed by wrapping col_name with sqlalchemy.sql.quoted_name(col_name, quote=True) to force dialect-specific identifier quoting, matching existing codebase patterns (e.g. base.py:2221).",
+    "finding_id": "finding-77f0e1e116f2",
     "identifier": "hive-column-injection",
     "action_taken": "fixed",
     "finding_type": "sast",
@@ -24,13 +24,16 @@
     "tests_passed": true,
     "files_changed": [
       "superset/db_engine_specs/hive.py",
-      "tests/unit_tests/db_engine_specs/test_hive.py"
+      "superset/db_engine_specs/presto.py",
+      "tests/unit_tests/db_engine_specs/test_hive.py",
+      "tests/integration_tests/db_engine_specs/hive_tests.py"
     ],
-    "scan_clean_after": null
+    "scan_clean_after": true
   },
   "tags": [
     "devin-remediate",
     "sast",
     "agent:devin-rs"
-  ]
+  ],
+  "status_detail": "waiting_for_user"
 }

@@ -1,17 +1,20 @@
 {
-  "session_id": "e624fe1092804bf9b425a23c38b7cb87",
+  "session_id": "c35b2dcd2f9c4abebd6e5a2ab618a089",
   "status": "running",
   "acus_consumed": 0.0,
   "pull_requests": [],
   "structured_output": {
     "pr_url": null,
     "status": "success",
-    "skipped": [],
-    "addressed": [
-      "CVE-2022-29217"
+    "skipped": [
+      {
+        "item": "CVE-2022-29217 - PyJWT algorithm confusion",
+        "reason": "False positive: repo already uses PyJWT 2.12.0 (fix threshold is 2.4.0), pyproject.toml constrains >=2.4.0, and all jwt.decode() calls explicitly pass the algorithms argument"
+      }
     ],
-    "reasoning": "CVE-2022-29217 is a false positive for this repository. The CVE affects PyJWT versions before 2.4.0 (algorithm confusion attack allowing HMAC forgery with asymmetric public keys). The installed version is PyJWT 2.12.0, which is well above the fix version. Evidence: (1) requirements/base.txt pins pyjwt==2.12.0; (2) pyproject.toml specifies PyJWT>=2.4.0,<3.0, explicitly excluding vulnerable versions; (3) Runtime verification confirms PyJWT 2.12.0 enforces the algorithms parameter in jwt.decode() \u2014 calling decode() without algorithms raises DecodeError; (4) All jwt.decode() calls in the codebase correctly specify the algorithms parameter (async_query_manager.py:215 uses algorithms=['HS256'], oauth2.py:262 uses algorithms=[config value], mcp_service/jwt_verifier.py uses python-jose not PyJWT). The scanner incorrectly flagged this CVE against a version that already contains the fix.",
-    "finding_id": "finding-pyjwt-001",
+    "addressed": [],
+    "reasoning": "CVE-2022-29217 affects PyJWT before 2.4.0, allowing algorithm confusion when jwt.decode() is called without an explicit algorithms argument. This is a false positive because: (1) The repo pins pyjwt==2.12.0 in requirements/base.txt, well above the 2.4.0 fix threshold. (2) pyproject.toml specifies PyJWT>=2.4.0, preventing installation of vulnerable versions. (3) All PyJWT jwt.decode() calls in source code (oauth2.py, async_query_manager.py) and tests already explicitly pass the algorithms argument. (4) The one jwt.decode() call without algorithms (jwt_verifier.py:568) uses authlib.jose, not PyJWT \u2014 confirmed by authlib.jose.errors imports. Posted detailed analysis as a comment on the source issue.",
+    "finding_id": "finding-e1add705e0dc",
     "identifier": "PyJWT",
     "action_taken": "false_positive",
     "finding_type": "sca",
@@ -24,5 +27,6 @@
     "devin-remediate",
     "sca",
     "agent:devin-rs"
-  ]
+  ],
+  "status_detail": "waiting_for_user"
 }

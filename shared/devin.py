@@ -97,6 +97,9 @@ class BaseDevinClient(ABC):
     def terminate_session(self, session_id: str) -> None:
         """Terminate a session. No-op by default (subclasses may override)."""
 
+    def finalize_recording(self, session_id: str) -> None:
+        """Re-query and persist recording with final data. No-op by default."""
+
     def poll_until_terminal(
         self,
         session_id: str,
@@ -236,6 +239,26 @@ class DevinClient(BaseDevinClient):
         if self._record:
             self._persist_recording(session_id, info)
         return info
+
+    def finalize_recording(self, session_id: str) -> None:
+        """Re-query the session after termination for final ACU data.
+
+        Called by dispatch after terminating a session so the recording
+        captures the finalized ``acus_consumed`` value.
+        """
+        if not self._record:
+            return
+        try:
+            time.sleep(5)  # brief pause for API to finalize billing
+            info = self.get_session(session_id)
+            self._persist_recording(session_id, info)
+            logger.info(
+                "Finalized recording for %s (acus=%.1f)",
+                session_id,
+                info.acus_consumed,
+            )
+        except Exception as exc:
+            logger.warning("Failed to finalize recording for %s: %s", session_id, exc)
 
     # -- recording ----------------------------------------------------------
 

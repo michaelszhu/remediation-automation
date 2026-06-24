@@ -181,6 +181,9 @@ async def _dispatch_inner(finding: Finding) -> SessionRecord:
         await asyncio.to_thread(client.terminate_session, result.session_id)
         info.status = SessionStatus.EXIT
 
+    # 5b. Re-query for final ACU data and update recording
+    await asyncio.to_thread(client.finalize_recording, result.session_id)
+
     # 6. Update record with final state
     record.status = info.status
     record.acus_consumed = info.acus_consumed

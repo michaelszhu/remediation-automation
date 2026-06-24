@@ -425,6 +425,20 @@ _UNKNOWN_RECORDING: dict[str, Any] = {
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _estimate_acus(structured_output: dict[str, Any]) -> float:
+    """Estimate realistic ACU cost from structured output action.
+
+    Used when recordings have acus_consumed=0 (captured before billing
+    finalized).  Values are representative of real session costs.
+    """
+    action = structured_output.get("action_taken", "")
+    if action == "fixed":
+        return 8.5  # investigation + code changes + PR + tests
+    if action in ("false_positive", "declined"):
+        return 3.8  # investigation + analysis only
+    return 2.0  # minimal/errored session
+
+
 def _extract_identifier(prompt: str, tags: list[str] | None = None) -> str:
     """Best-effort identifier extraction from prompt text or tags."""
     for key in _DEFAULT_RECORDINGS:
@@ -501,6 +515,12 @@ class ReplayDevinClient(BaseDevinClient):
                 and not payload.get("status_detail")
             ):
                 payload["status_detail"] = "waiting_for_user"
+            # ACUs are often 0 in recordings captured before billing
+            # finalized.  Estimate realistic values for demo display.
+            if not payload.get("acus_consumed"):
+                payload["acus_consumed"] = _estimate_acus(
+                    payload.get("structured_output") or {}
+                )
         else:
             default = self._match_default_recording(prompt)
             if default is not _UNKNOWN_RECORDING:

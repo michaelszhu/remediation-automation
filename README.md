@@ -25,7 +25,7 @@ cp .env.example .env
 docker compose up --build -d
 
 # 4. Run the demo — dispatches 8 findings and shows results
-python -m scripts.run_demo demo
+docker compose exec orchestrator python -m scripts.run_demo demo
 
 # 5. Open the dashboard
 open http://localhost:8001
@@ -39,7 +39,7 @@ showing fixes, declined findings, and false positives.
 To run the full verification suite (four automated gates):
 
 ```bash
-python -m scripts.run_demo verify
+docker compose exec orchestrator python -m scripts.run_demo verify
 # Prints "ALL 4 GATES PASSED" on success
 ```
 
@@ -339,7 +339,7 @@ Runs four gates against the replay stack, exiting non-zero on the first failure:
 DEVIN_REPLAY=1 docker compose up --build -d
 
 # Run the correctness suite
-python -m scripts.run_demo verify
+docker compose exec orchestrator python -m scripts.run_demo verify
 ```
 
 A passing run prints `ALL 4 GATES PASSED` and exits 0.
@@ -354,7 +354,7 @@ Requires `--yes` to confirm ACU spend.
 DEVIN_REPLAY=0 DEVIN_RECORD=1 docker compose up --build -d
 
 # Run the capture (consumes real ACUs)
-python -m scripts.run_demo record --yes
+docker compose exec orchestrator python -m scripts.run_demo record --yes
 ```
 
 On completion the script:
@@ -372,7 +372,7 @@ human-readable step banners for terminal narration. Does **not** hard-assert
 
 ```bash
 DEVIN_REPLAY=1 docker compose up --build -d
-python -m scripts.run_demo demo --pace 5
+docker compose exec orchestrator python -m scripts.run_demo demo --pace 5
 ```
 
 Ends with a final tally (6 fixed, 1 declined, 1 false positive) and the

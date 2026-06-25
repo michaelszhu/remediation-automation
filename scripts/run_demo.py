@@ -474,7 +474,7 @@ def _run_scanner_step(pace: int = 2, fresh: bool = False) -> dict[str, str]:
     step("Running scanner against target repository\u2026")
     issue_urls: dict[str, str] = {}
 
-    results = file_issues_detailed(DEMO_FINDINGS)
+    results = file_issues_detailed(DEMO_FINDINGS, force=fresh)
     for r in results:
         ident = r.finding.identifier
         title = r.finding.title

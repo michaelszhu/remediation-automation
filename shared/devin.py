@@ -618,8 +618,6 @@ class ReplayDevinClient(BaseDevinClient):
         title: str | None = None,
     ) -> CreateSessionResult:
         identifier = _extract_identifier(prompt, tags)
-        session_id = f"devin-replay-{identifier}"
-        url = f"https://app.devin.ai/sessions/{session_id}"
 
         recorded = (
             _load_recording(identifier, self._recordings_dir)
@@ -629,7 +627,10 @@ class ReplayDevinClient(BaseDevinClient):
         if recorded is not None:
             logger.info("Replaying recording for %r", identifier)
             payload = dict(recorded)
-            payload["session_id"] = session_id
+            # Use the real session ID from the recording so dashboard
+            # links point to the actual Devin sessions.
+            session_id = payload.get("session_id") or f"devin-replay-{identifier}"
+            url = f"https://app.devin.ai/sessions/{session_id}"
             if tags is not None:
                 payload.setdefault("tags", tags)
             # Recordings captured in waiting_for_user state may lack
@@ -647,6 +648,8 @@ class ReplayDevinClient(BaseDevinClient):
                     payload.get("structured_output") or {}
                 )
         else:
+            session_id = f"devin-replay-{identifier}"
+            url = f"https://app.devin.ai/sessions/{session_id}"
             default = self._match_default_recording(prompt)
             if default is not _UNKNOWN_RECORDING:
                 logger.warning(

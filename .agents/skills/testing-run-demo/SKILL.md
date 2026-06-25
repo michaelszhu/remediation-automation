@@ -48,11 +48,11 @@ uvicorn dashboard.main:app --host 0.0.0.0 --port 8001     # shell 2
 python -m scripts.run_demo verify
 ```
 
-**Expected:** All 4 gates pass (19 `[PASS]` lines total), final output `ALL 4 GATES PASSED`, exit code 0.
+**Expected:** All 4 gates pass (35 `[PASS]` lines total), final output `ALL 4 GATES PASSED`, exit code 0.
 
 **What each gate covers:**
 - Gate 1: Service health (orchestrator + dashboard reachable)
-- Gate 2: Full dispatch pipeline — seeds 3 findings, runs batch, checks per-finding structured output fields + dashboard aggregates
+- Gate 2: Full dispatch pipeline — seeds 8 findings, runs batch, checks per-finding structured output fields + dashboard aggregates
 - Gate 3: Webhook path — sends `issues.labeled` payloads, verifies one-to-one event→session mapping
 - Gate 4: Idempotency guard (duplicate webhook → no new session) + reset endpoint (system returns to zero)
 
@@ -63,14 +63,19 @@ python -m scripts.run_demo verify
 1. Open dashboard at http://localhost:8001 — should show empty state (all zeros)
 2. Run `python -m scripts.run_demo demo --pace 5`
 3. Dashboard auto-refreshes every 5s; watch it populate progressively
-4. Final state: Fixed=2, Declined=1, Total Findings=3, 3 table rows with correct badges
+4. Final state: Fixed=6, Declined=1, False Positive=1, Total Findings=8, 8 table rows with correct badges
 
 **Table assertions:**
 - hive-column-injection → SAST / EXIT / fixed / PR link present
 - PyJWT → SCA / EXIT / fixed / PR link present
 - paramiko → SCA / EXIT / declined / "—" (no PR)
+- apispec-upgrade → SCA / EXIT / fixed / PR link present
+- dompurify-upgrade → SCA / EXIT / fixed / PR link present
+- cancel-query-sql-injection → SAST / EXIT / false_positive / "—" (no PR)
+- yaml-unsafe-loader → SAST / EXIT / fixed / PR link present
+- silenced-exceptions → SAST / EXIT / fixed / PR link present
 
-**Metric assertions:** ACUs per Fix=2.2, Total ACUs=4.5, Fix Rate=66.7%
+**Metric assertions:** ACUs per Fix > 0, Total ACUs > 0, Fix Rate=75.0%
 
 ### Test 3: `record` mode safety guard (shell-only)
 

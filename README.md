@@ -190,7 +190,7 @@ FastAPI service that:
 Read-only UI showing:
 - Finding status overview
 - Session details, PRs, risk flags
-- ACU consumption
+- ACU consumption (estimated — see note below)
 
 ### `scanners/`
 
@@ -389,3 +389,10 @@ built-in defaults — making the demo indistinguishable from a live run.
 | `ORCHESTRATOR_URL` | `http://localhost:8000` | Base URL of the orchestrator service |
 | `DASHBOARD_URL` | `http://localhost:8001` | Base URL of the dashboard service |
 | `RECORDINGS_DIR` | `recordings` | Directory for record/replay JSON files |
+
+## Note on ACU Metrics
+
+ACU (Autonomous Compute Unit) values shown in the dashboard and demo output are
+**estimates**. In replay mode, ACU figures come from pre-recorded session data
+and reflect the approximate cost observed during those real runs. Actual ACU
+consumption varies by session complexity, model routing, and retry behavior.

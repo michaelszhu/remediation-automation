@@ -545,11 +545,11 @@ a:hover {{ text-decoration: underline; }}
 <div class="metrics-grid">
     <div class="metric-card highlight">
         <div class="metric-value highlight">{m["acus_per_fix"]}</div>
-        <div class="metric-label">ACUs per Fix</div>
+        <div class="metric-label">ACUs per Fix (est.)</div>
     </div>
     <div class="metric-card">
         <div class="metric-value">{m["total_acus"]}</div>
-        <div class="metric-label">Total ACUs</div>
+        <div class="metric-label">Total ACUs (est.)</div>
     </div>
     <div class="metric-card">
         <div class="metric-value">{m["success_rate"]}%</div>
@@ -590,7 +590,7 @@ a:hover {{ text-decoration: underline; }}
     <th>Action</th>
     <th>PR</th>
     <th>Devin Session</th>
-    <th style="text-align:right">ACUs</th>
+    <th style="text-align:right">ACUs (est.)</th>
 </tr>
 </thead>
 <tbody>

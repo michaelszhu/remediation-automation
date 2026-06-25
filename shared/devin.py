@@ -401,6 +401,141 @@ _DEFAULT_RECORDINGS: dict[str, dict[str, Any]] = {
         "scan_clean_after": True,
         "risk_flagged": None,
     },
+    "apispec-upgrade": {
+        "finding_id": "finding-apispec-upgrade-001",
+        "finding_type": "sca",
+        "identifier": "apispec-upgrade",
+        "action_taken": "fixed",
+        "status": "success",
+        "pr_url": "https://github.com/michaelszhu/superset/pull/44",
+        "files_changed": [
+            "requirements/base.txt",
+            "tests/unit_tests/db_engine_specs/test_base.py",
+        ],
+        "addressed": [
+            "Bumped apispec from 6.6.1 to 6.7.1 and updated test assertion for new JSON-schema output",
+        ],
+        "skipped": [],
+        "reasoning": (
+            "Bumped apispec to 6.7.1. The only breaking change was a minor "
+            "JSON-schema generation difference in db_engine_specs tests — "
+            "updated the expected assertion to match the new output format."
+        ),
+        "tests_passed": True,
+        "scan_clean_after": True,
+        "risk_flagged": None,
+    },
+    "dompurify-upgrade": {
+        "finding_id": "finding-dompurify-upgrade-001",
+        "finding_type": "sca",
+        "identifier": "dompurify-upgrade",
+        "action_taken": "fixed",
+        "status": "success",
+        "pr_url": "https://github.com/michaelszhu/superset/pull/45",
+        "files_changed": [
+            "superset-frontend/package.json",
+            "superset-frontend/package-lock.json",
+        ],
+        "addressed": [
+            "Bumped DOMPurify to 3.1.7 to resolve HTML-sanitization bypass advisory",
+        ],
+        "skipped": [],
+        "reasoning": (
+            "Bumped DOMPurify from 3.0.6 to 3.1.7 in superset-frontend. "
+            "The advisory allowed crafted HTML to bypass the sanitizer. "
+            "Ran frontend build and tests — no breaking changes."
+        ),
+        "tests_passed": True,
+        "scan_clean_after": True,
+        "risk_flagged": None,
+    },
+    "cancel-query-sql-injection": {
+        "finding_id": "finding-cancel-query-sqli-001",
+        "finding_type": "sast",
+        "identifier": "cancel-query-sql-injection",
+        "action_taken": "false_positive",
+        "status": "needs_review",
+        "pr_url": None,
+        "files_changed": [],
+        "addressed": [],
+        "skipped": [
+            {
+                "item": "cancel_query f-string SQL interpolation",
+                "reason": (
+                    "The interpolated value is pg_stat_activity.pid — an "
+                    "integer process ID retrieved from a system catalog "
+                    "query, not user input. No injection vector exists."
+                ),
+            },
+        ],
+        "reasoning": (
+            "Investigated the cancel_query code path in postgres.py and "
+            "redshift.py. The f-string interpolates a process ID (integer) "
+            "retrieved from pg_stat_activity, not user-supplied input. "
+            "The SAST scanner flagged the pattern but this is a false "
+            "positive — no user-controlled data reaches this SQL statement."
+        ),
+        "tests_passed": None,
+        "scan_clean_after": None,
+        "risk_flagged": None,
+    },
+    "yaml-unsafe-loader": {
+        "finding_id": "finding-yaml-unsafe-loader-001",
+        "finding_type": "sast",
+        "identifier": "yaml-unsafe-loader",
+        "action_taken": "fixed",
+        "status": "success",
+        "pr_url": "https://github.com/michaelszhu/superset/pull/46",
+        "files_changed": [
+            "superset/examples/utils.py",
+        ],
+        "addressed": [
+            "Replaced yaml.Loader with yaml.SafeLoader in load_configs_from_directory()",
+        ],
+        "skipped": [],
+        "reasoning": (
+            "Replaced yaml.Loader with yaml.SafeLoader in "
+            "load_configs_from_directory(). The function only reads "
+            "simple key-value metadata from bundled YAML files — "
+            "SafeLoader handles this without allowing arbitrary code "
+            "execution. All example-loading tests pass."
+        ),
+        "tests_passed": True,
+        "scan_clean_after": True,
+        "risk_flagged": None,
+    },
+    "silenced-exceptions": {
+        "finding_id": "finding-silenced-exceptions-001",
+        "finding_type": "sast",
+        "identifier": "silenced-exceptions",
+        "action_taken": "fixed",
+        "status": "success",
+        "pr_url": "https://github.com/michaelszhu/superset/pull/47",
+        "files_changed": [
+            "superset/charts/client_processing.py",
+            "superset/extensions/__init__.py",
+            "superset/async_events/async_query_manager.py",
+            "superset/utils/log.py",
+            "superset/models/core.py",
+            "superset/connectors/sqla/utils.py",
+        ],
+        "addressed": [
+            "Added logger.warning with exc_info=True to silenced exception handlers",
+            "Narrowed broad except Exception to specific types where safe",
+        ],
+        "skipped": [],
+        "reasoning": (
+            "Added logger.warning(..., exc_info=True) to exception handlers "
+            "that were silently discarding errors. Narrowed except Exception "
+            "to specific types (ValueError, KeyError, IndexError, OSError, "
+            "json.JSONDecodeError, TypeError) where the set of expected "
+            "exceptions is clear. Kept broad catches where intentional "
+            "(e.g. database property extraction) but added logging."
+        ),
+        "tests_passed": True,
+        "scan_clean_after": True,
+        "risk_flagged": None,
+    },
 }
 
 

@@ -266,7 +266,7 @@ async def reset() -> dict[str, str]:
 
 @app.post("/seed-demo")
 async def seed_demo() -> dict[str, Any]:
-    """Insert the 3 demo findings without dispatching."""
+    """Insert the demo findings without dispatching."""
     for f in _DEMO_SEED_FINDINGS:
         upsert_finding(f)
     return {

@@ -35,7 +35,7 @@ Returns immediately; processing runs in the background.
 
 **Response**:
 ```json
-{"status": "dispatching", "count": 3}
+{"status": "dispatching", "count": 8}
 ```
 
 ## Dispatch Flow

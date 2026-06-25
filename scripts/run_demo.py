@@ -210,13 +210,13 @@ def mode_verify() -> int:
     banner("GATE 2 \u2014 Dispatch + Classify")
     step("Clean-reset")
     clean_reset()
-    step("Seed 3 demo findings")
+    step("Seed 8 demo findings")
     seed_demo()
     step("POST /run-batch")
     batch_resp = run_batch()
     print(f"    \u2192 {batch_resp}")
-    step("Polling for 3 terminal sessions \u2026")
-    sessions = poll_terminal(3)
+    step("Polling for 8 terminal sessions \u2026")
+    sessions = poll_terminal(8)
 
     by_ident: dict[str, dict] = {
         s["identifier"]: s for s in sessions if s.get("identifier")
@@ -261,13 +261,71 @@ def mode_verify() -> int:
         result_line(label, ok)
         gate2_ok = gate2_ok and ok
 
+    # --- apispec-upgrade ---
+    print("\n  \u2500\u2500 apispec-upgrade \u2500\u2500")
+    a = by_ident.get("apispec-upgrade", {})
+    so = a.get("structured_output") or {}
+    for label, ok in [
+        ("action_taken='fixed'", a.get("action_taken") == "fixed"),
+        ("pr_url is set", bool(a.get("pr_url"))),
+        ("tests_passed=true", so.get("tests_passed") is True),
+    ]:
+        result_line(label, ok)
+        gate2_ok = gate2_ok and ok
+
+    # --- dompurify-upgrade ---
+    print("\n  \u2500\u2500 dompurify-upgrade \u2500\u2500")
+    d = by_ident.get("dompurify-upgrade", {})
+    so = d.get("structured_output") or {}
+    for label, ok in [
+        ("action_taken='fixed'", d.get("action_taken") == "fixed"),
+        ("pr_url is set", bool(d.get("pr_url"))),
+        ("tests_passed=true", so.get("tests_passed") is True),
+    ]:
+        result_line(label, ok)
+        gate2_ok = gate2_ok and ok
+
+    # --- cancel-query-sql-injection ---
+    print("\n  \u2500\u2500 cancel-query-sql-injection \u2500\u2500")
+    c = by_ident.get("cancel-query-sql-injection", {})
+    for label, ok in [
+        ("action_taken='false_positive'", c.get("action_taken") == "false_positive"),
+        ("pr_url is null", not c.get("pr_url")),
+    ]:
+        result_line(label, ok)
+        gate2_ok = gate2_ok and ok
+
+    # --- yaml-unsafe-loader ---
+    print("\n  \u2500\u2500 yaml-unsafe-loader \u2500\u2500")
+    y = by_ident.get("yaml-unsafe-loader", {})
+    so = y.get("structured_output") or {}
+    for label, ok in [
+        ("action_taken='fixed'", y.get("action_taken") == "fixed"),
+        ("pr_url is set", bool(y.get("pr_url"))),
+        ("tests_passed=true", so.get("tests_passed") is True),
+    ]:
+        result_line(label, ok)
+        gate2_ok = gate2_ok and ok
+
+    # --- silenced-exceptions ---
+    print("\n  \u2500\u2500 silenced-exceptions \u2500\u2500")
+    x = by_ident.get("silenced-exceptions", {})
+    so = x.get("structured_output") or {}
+    for label, ok in [
+        ("action_taken='fixed'", x.get("action_taken") == "fixed"),
+        ("pr_url is set", bool(x.get("pr_url"))),
+        ("tests_passed=true", so.get("tests_passed") is True),
+    ]:
+        result_line(label, ok)
+        gate2_ok = gate2_ok and ok
+
     # --- dashboard aggregates ---
     print("\n  \u2500\u2500 Dashboard Aggregates \u2500\u2500")
     dash = get_dashboard_data()
     m = dash["metrics"]
     for label, ok in [
-        (f"total={m['total']} (expected 3)", m["total"] == 3),
-        (f"fixed={m['fixed']} (expected 2)", m["fixed"] == 2),
+        (f"total={m['total']} (expected 8)", m["total"] == 8),
+        (f"fixed={m['fixed']} (expected 6)", m["fixed"] == 6),
         (f"declined={m['declined']} (expected 1)", m["declined"] == 1),
         (
             f"acus_per_fix={m['acus_per_fix']} (finite >0)",

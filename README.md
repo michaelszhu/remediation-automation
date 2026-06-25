@@ -91,13 +91,18 @@ docker compose up --build
 
 The `ReplayDevinClient` replays recorded real session payloads from
 `recordings/*.json`.  If no recording exists for a finding, it falls back to
-built-in default recordings for the three demo findings:
+built-in default recordings for the eight demo findings:
 
-| Identifier              | action_taken | status       | Notes                                      |
-|-------------------------|--------------|--------------|--------------------------------------------|
-| `paramiko`              | declined     | needs_review | Risk: sshtunnel depends on removed DSSKey  |
-| `PyJWT`                 | fixed        | success      | CVE-2022-29217; skips unrelated CVEs       |
-| `hive-column-injection` | fixed        | success      | SAST — escaped column identifiers in Hive  |
+| Identifier                  | action_taken   | status       | Notes                                      |
+|-----------------------------|----------------|--------------|--------------------------------------------|
+| `paramiko`                  | declined       | needs_review | Risk: sshtunnel depends on removed DSSKey  |
+| `PyJWT`                     | fixed          | success      | CVE-2022-29217; skips unrelated CVEs       |
+| `hive-column-injection`     | fixed          | success      | SAST — escaped column identifiers in Hive  |
+| `apispec-upgrade`           | fixed          | success      | Bumped apispec, updated test assertion      |
+| `dompurify-upgrade`         | fixed          | success      | Bumped DOMPurify for sanitizer-bypass fix   |
+| `cancel-query-sql-injection`| false_positive | needs_review | pid interpolation, not user input           |
+| `yaml-unsafe-loader`        | fixed          | success      | Replaced yaml.Loader with yaml.SafeLoader   |
+| `silenced-exceptions`       | fixed          | success      | Added logging to silenced exception handlers |
 
 ### Real mode
 
@@ -286,7 +291,7 @@ Runs four gates against the replay stack, exiting non-zero on the first failure:
 | Gate | What it checks | Likely fault layer on failure |
 |------|---------------|-------------------------------|
 | 1 — Stack Up | `/healthz` ok **and** dashboard URL responds | docker-compose / networking |
-| 2 — Dispatch + Classify | Batch dispatch of 3 findings → correct per-finding outcomes (`action_taken`, `pr_url`, `scan_clean_after`, `skipped`, `risk_flagged`) + dashboard aggregates (total, fixed, declined, finite ACUs-per-fix) | dispatch / classify / ReplayDevinClient |
+| 2 — Dispatch + Classify | Batch dispatch of 8 findings → correct per-finding outcomes (`action_taken`, `pr_url`, `scan_clean_after`, `skipped`, `risk_flagged`) + dashboard aggregates (total, fixed, declined, finite ACUs-per-fix) | dispatch / classify / ReplayDevinClient |
 | 3 — Webhook Path | One `issues.labeled` event → one session → one DB row per finding | webhook handler / issue parser |
 | 4 — Idempotency + Reset | Duplicate webhook → no duplicate sessions; clean-reset → system at zero | idempotency guard / reset endpoint |
 

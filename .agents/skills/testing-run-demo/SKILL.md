@@ -60,22 +60,23 @@ python -m scripts.run_demo verify
 
 ### Test 2: `demo` mode (browser + shell, record this)
 
-1. Open dashboard at http://localhost:8001 — should show empty state (all zeros)
-2. Run `python -m scripts.run_demo demo --pace 5`
-3. Dashboard auto-refreshes every 5s; watch it populate progressively
-4. Final state: Fixed=6, Declined=1, False Positive=1, Total Findings=8, 8 table rows with correct badges
+1. Reset state first: `curl -X POST http://localhost:8000/reset`
+2. Open dashboard at http://localhost:8001 — should show empty state (all zeros)
+3. Run `python -m scripts.run_demo demo --pace 3`
+4. Dashboard auto-refreshes every 5s; watch it populate progressively
+5. Final state: Fixed=6, False Positive=2, Total Findings=8, Completed=8, 8 table rows with correct badges
 
 **Table assertions:**
+- paramiko → SCA / EXIT / false_positive / "—" (no PR)
+- PyJWT → SCA / EXIT / false_positive / "—" (no PR)
 - hive-column-injection → SAST / EXIT / fixed / PR link present
-- PyJWT → SCA / EXIT / fixed / PR link present
-- paramiko → SCA / EXIT / declined / "—" (no PR)
 - apispec-upgrade → SCA / EXIT / fixed / PR link present
 - dompurify-upgrade → SCA / EXIT / fixed / PR link present
-- cancel-query-sql-injection → SAST / EXIT / false_positive / "—" (no PR)
+- cancel-query-sql-injection → SAST / EXIT / fixed / PR link present
 - yaml-unsafe-loader → SAST / EXIT / fixed / PR link present
 - silenced-exceptions → SAST / EXIT / fixed / PR link present
 
-**Metric assertions:** ACUs per Fix > 0, Total ACUs > 0, Fix Rate=75.0%
+**Metric assertions:** ACUs per Fix = 9.8, Total ACUs = 58.6, Fix Rate = 75.0%, Fixed = 6, False Positive = 2
 
 ### Test 3: `record` mode safety guard (shell-only)
 
@@ -89,6 +90,8 @@ python -m scripts.run_demo record  # no --yes
 
 - The `shared/devin.py` module uses `DEVIN_REPLAY` (not `DEVIN_MOCK`). If you see references to `DEVIN_MOCK` in code, that's stale and needs updating.
 - The dashboard auto-refreshes every 5s via meta refresh. You may need to manually refresh (F5) if timing is tight during demo mode testing.
-- The `--pace` flag in demo mode controls seconds between webhook dispatches. Use `--pace 5` or higher for visible progressive population; `--pace 1` makes everything appear nearly simultaneously.
+- The `--pace` flag in demo mode controls seconds between webhook dispatches. Use `--pace 3` for visible progressive population; `--pace 1` makes everything appear nearly simultaneously.
 - If services were previously running with data, run `curl -X POST http://localhost:8000/reset` before testing to clear state.
 - The script uses `requests` library — make sure it's installed (`pip install -r requirements.txt`).
+- **Recording files vs defaults:** `run_demo.py` calls `_set_replay_config(defaults_only=False)` in verify mode so it loads actual `recordings/*.json` files. If you see gate 2 failing with wrong `action_taken` values, check that recording files exist and that `defaults_only=False` is set. The `_DEFAULT_RECORDINGS` dict in `shared/devin.py` is a fallback only.
+- **Docker vs local:** When running in Docker (`docker compose up --build`), the same tests apply — just prefix commands with `docker compose exec orchestrator`. The `.env.example` already sets `DEVIN_REPLAY=1`.

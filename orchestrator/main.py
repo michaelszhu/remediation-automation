@@ -233,6 +233,51 @@ _DEMO_SEED_FINDINGS = [
         source_issue_url="https://github.com/michaelszhu/superset/issues/103",
         raw_details={"rule_id": "hive-column-injection", "path": "superset/db_engine_specs/hive.py"},
     ),
+    Finding(
+        finding_id="finding-apispec-upgrade-001",
+        finding_type=FindingType.SCA,
+        identifier="apispec-upgrade",
+        title="Dependency upgrade: apispec pinned below latest (known test break)",
+        severity="low",
+        source_issue_url="https://github.com/michaelszhu/superset/issues/104",
+        raw_details={"package": "apispec", "installed_version": "6.6.1", "fix_versions": ["6.7.0"]},
+    ),
+    Finding(
+        finding_id="finding-dompurify-upgrade-001",
+        finding_type=FindingType.SCA,
+        identifier="dompurify-upgrade",
+        title="Frontend dependency: DOMPurify flagged for sanitizer-bypass advisory",
+        severity="moderate",
+        source_issue_url="https://github.com/michaelszhu/superset/issues/105",
+        raw_details={"package": "dompurify", "installed_version": "3.0.6", "fix_versions": ["3.1.0"]},
+    ),
+    Finding(
+        finding_id="finding-cancel-query-sqli-001",
+        finding_type=FindingType.SAST,
+        identifier="cancel-query-sql-injection",
+        title="Possible SQL injection in cancel_query (Postgres/Redshift)",
+        severity="medium",
+        source_issue_url="https://github.com/michaelszhu/superset/issues/106",
+        raw_details={"rule_id": "cancel-query-sql-injection", "path": "superset/db_engine_specs/postgres.py"},
+    ),
+    Finding(
+        finding_id="finding-yaml-unsafe-loader-001",
+        finding_type=FindingType.SAST,
+        identifier="yaml-unsafe-loader",
+        title="Unsafe YAML deserialization: yaml.Loader in load_configs_from_directory()",
+        severity="high",
+        source_issue_url="https://github.com/michaelszhu/superset/issues/107",
+        raw_details={"rule_id": "yaml-unsafe-loader", "path": "superset/examples/utils.py"},
+    ),
+    Finding(
+        finding_id="finding-silenced-exceptions-001",
+        finding_type=FindingType.SAST,
+        identifier="silenced-exceptions",
+        title="Silently swallowed exceptions across core modules",
+        severity="low",
+        source_issue_url="https://github.com/michaelszhu/superset/issues/108",
+        raw_details={"rule_id": "silenced-exceptions", "path": "superset/"},
+    ),
 ]
 
 
@@ -266,7 +311,7 @@ async def reset() -> dict[str, str]:
 
 @app.post("/seed-demo")
 async def seed_demo() -> dict[str, Any]:
-    """Insert the 3 demo findings without dispatching."""
+    """Insert the demo findings without dispatching."""
     for f in _DEMO_SEED_FINDINGS:
         upsert_finding(f)
     return {

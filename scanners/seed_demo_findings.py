@@ -1,30 +1,37 @@
-"""Seed exactly three deterministic demo findings as GitHub issues.
+"""Seed eight deterministic demo findings as GitHub issues.
 
 Usage::
 
     export GITHUB_TOKEN=ghp_...
     export SUPERSET_FORK_REPO=michaelszhu/superset   # default
-    python -m scanners.seed_demo_findings
+    python -m scanners.seed_demo_findings          # idempotent
+    python -m scanners.seed_demo_findings --reset  # close all, re-seed
 
 Creates labelled ``devin-remediate`` issues on the fork for:
 
-1. **paramiko 3.5.1 → 3.5.0** — sshtunnel depends on the removed ``DSSKey``.
+1. **paramiko 3.5.1** — sshtunnel depends on the removed ``DSSKey``.
 2. **PyJWT CVE-2022-29217** — algorithm confusion allowing forged tokens.
-3. **Hive column-name SQL injection** — ``where_latest_partition`` passes
-   unsanitized column names into ``Column()``.
+3. **Hive column-name SQL injection** — unsanitized identifiers in SQL.
+4. **apispec pin** — pinned below latest, known test break on upgrade.
+5. **DOMPurify advisory** — sanitizer-bypass advisory, frontend SCA.
+6. **cancel_query SQL injection** — f-string interpolation in Postgres/Redshift.
+7. **YAML unsafe loader** — yaml.Loader allows arbitrary code execution.
+8. **Silenced exceptions** — broad except handlers discard errors silently.
 
-Idempotent — safe to run repeatedly.
+Idempotent — safe to run repeatedly.  Use ``--reset`` to close existing
+demo issues and create fresh ones.
 """
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from shared.models import Finding, FindingType  # noqa: E402
-from scanners.issue_filer import file_issues  # noqa: E402
+from scanners.issue_filer import close_existing_issues, file_issues  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Known-good demo findings
@@ -100,13 +107,169 @@ DEMO_FINDINGS: list[Finding] = [
             },
         },
     ),
+    # 4. SCA — apispec pinned below latest
+    Finding(
+        finding_id="sca-apispec-upgrade",
+        finding_type=FindingType.SCA,
+        identifier="apispec-upgrade",
+        title="Dependency upgrade: apispec pinned below latest (known test break)",
+        severity="low",
+        source_issue_url="",
+        raw_details={
+            "package": "apispec",
+            "installed_version": "6.6.1",
+            "vuln_id": "apispec-upgrade-pinned",
+            "aliases": [],
+            "fix_versions": ["6.7.0"],
+            "description": (
+                "apispec is pinned below 6.7 in the Superset requirements. "
+                "A newer apispec version changed JSON-schema generation, which "
+                "breaks a unit test — the pin has a maintainer note "
+                "acknowledging it is a known, un-bumped issue. Flagged for "
+                "upgrade."
+            ),
+        },
+    ),
+    # 5. SCA — DOMPurify frontend advisory
+    Finding(
+        finding_id="sca-dompurify-upgrade",
+        finding_type=FindingType.SCA,
+        identifier="dompurify-upgrade",
+        title="Frontend dependency: DOMPurify flagged for sanitizer-bypass advisory",
+        severity="moderate",
+        source_issue_url="",
+        raw_details={
+            "package": "dompurify",
+            "installed_version": "3.0.6",
+            "vuln_id": "dompurify-sanitizer-bypass",
+            "aliases": [],
+            "fix_versions": ["3.1.0"],
+            "description": (
+                "DOMPurify in superset-frontend is below the patched version "
+                "for a published advisory (HTML-sanitization bypass). Flagged "
+                "by the frontend SCA scan for a version bump."
+            ),
+        },
+    ),
+    # 6. SAST — cancel_query SQL injection
+    Finding(
+        finding_id="sast-cancel-query-sql-injection",
+        finding_type=FindingType.SAST,
+        identifier="cancel-query-sql-injection",
+        title="Possible SQL injection in cancel_query (Postgres/Redshift)",
+        severity="medium",
+        source_issue_url="",
+        raw_details={
+            "rule_id": "cancel-query-sql-injection",
+            "path": "superset/db_engine_specs/postgres.py",
+            "start_line": 112,
+            "end_line": 112,
+            "message": (
+                "The SAST scan flagged an f-string interpolated into a SQL "
+                "statement in the cancel_query path of the Postgres and "
+                "Redshift engine specs, as a possible SQL injection."
+            ),
+            "metadata": {
+                "cwe": ["CWE-89"],
+                "confidence": "MEDIUM",
+                "also_affects": [
+                    "superset/db_engine_specs/redshift.py",
+                ],
+            },
+        },
+    ),
+    # 7. SAST — YAML unsafe loader
+    Finding(
+        finding_id="sast-yaml-unsafe-loader",
+        finding_type=FindingType.SAST,
+        identifier="yaml-unsafe-loader",
+        title="Unsafe YAML deserialization: yaml.Loader in load_configs_from_directory()",
+        severity="high",
+        source_issue_url="",
+        raw_details={
+            "rule_id": "yaml-unsafe-loader",
+            "path": "superset/examples/utils.py",
+            "start_line": 42,
+            "end_line": 42,
+            "message": (
+                "yaml.Loader allows arbitrary Python object instantiation via "
+                "YAML constructor tags (e.g. !!python/object/apply:os.system). "
+                "load_configs_from_directory() uses yaml.Loader to read bundled "
+                "example metadata. While the current call site only reads local "
+                "filesystem files, the unrestricted loader is unnecessary — the "
+                "data is simple key-value. yaml.SafeLoader restricts "
+                "deserialization to basic scalars, sequences, and mappings, "
+                "eliminating the code-execution surface as defense-in-depth."
+            ),
+            "metadata": {
+                "cwe": ["CWE-502"],
+                "confidence": "HIGH",
+            },
+        },
+    ),
+    # 8. SAST — silenced exceptions across core modules
+    Finding(
+        finding_id="sast-silenced-exceptions",
+        finding_type=FindingType.SAST,
+        identifier="silenced-exceptions",
+        title="Silently swallowed exceptions across core modules",
+        severity="low",
+        source_issue_url="",
+        raw_details={
+            "rule_id": "silenced-exceptions",
+            "path": "superset/",
+            "start_line": 0,
+            "end_line": 0,
+            "message": (
+                "Multiple exception handlers across the codebase catch errors "
+                "and silently discard them — using pass, bare return, or "
+                "print() — making it impossible to diagnose failures in "
+                "production. Affected modules include "
+                "charts/client_processing.py, extensions/__init__.py, "
+                "async_events/async_query_manager.py, utils/log.py, "
+                "models/core.py, and connectors/sqla/utils.py. Flagged for "
+                "adding logger.warning(..., exc_info=True) and narrowing "
+                "broad except Exception clauses where possible."
+            ),
+            "metadata": {
+                "cwe": ["CWE-390"],
+                "confidence": "HIGH",
+                "also_affects": [
+                    "superset/charts/client_processing.py",
+                    "superset/extensions/__init__.py",
+                    "superset/async_events/async_query_manager.py",
+                    "superset/utils/log.py",
+                    "superset/models/core.py",
+                    "superset/connectors/sqla/utils.py",
+                ],
+            },
+        },
+    ),
 ]
 
 
 def main() -> None:
-    print("Seeding 3 demo findings as GitHub issues ...")
-    filed, skipped = file_issues(DEMO_FINDINGS)
-    print(f"Done — filed {filed}, skipped {skipped} (already existed).")
+    parser = argparse.ArgumentParser(
+        description="Seed demo findings as GitHub issues on the Superset fork.",
+    )
+    parser.add_argument(
+        "--reset",
+        action="store_true",
+        help="Close all existing demo issues before re-seeding.",
+    )
+    args = parser.parse_args()
+
+    count = len(DEMO_FINDINGS)
+
+    if args.reset:
+        print("Closing existing demo issues ...")
+        closed = close_existing_issues(DEMO_FINDINGS)
+        print(f"  Closed {closed} issue(s).")
+        print()
+
+    print(f"Seeding {count} demo findings as GitHub issues ...")
+    filed, skipped = file_issues(DEMO_FINDINGS, force=args.reset)
+    print(f"\nDone — filed {filed}, skipped {skipped} (already existed).")
 
 
 if __name__ == "__main__":

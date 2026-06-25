@@ -147,15 +147,23 @@ class IssueResult:
     status: str  # "created", "skipped", "failed"
 
 
-def file_issues(findings: list[Finding]) -> tuple[int, int]:
-    """File GitHub issues. Returns ``(filed_count, skipped_count)``."""
-    results = file_issues_detailed(findings)
+def file_issues(
+    findings: list[Finding], *, force: bool = False,
+) -> tuple[int, int]:
+    """File GitHub issues. Returns ``(filed_count, skipped_count)``.
+
+    Pass ``force=True`` to skip the idempotency/fingerprint check and
+    create issues unconditionally (used after a reset).
+    """
+    results = file_issues_detailed(findings, force=force)
     filed = sum(1 for r in results if r.status == "created")
     skipped = sum(1 for r in results if r.status == "skipped")
     return filed, skipped
 
 
-def file_issues_detailed(findings: list[Finding]) -> list[IssueResult]:
+def file_issues_detailed(
+    findings: list[Finding], *, force: bool = False,
+) -> list[IssueResult]:
     """File GitHub issues and return detailed results with issue URLs."""
     repo = _repo_slug()
     headers = _github_headers()
@@ -163,7 +171,7 @@ def file_issues_detailed(findings: list[Finding]) -> list[IssueResult]:
 
     with httpx.Client(headers=headers, timeout=30) as client:
         _ensure_label(client, repo)
-        existing = _existing_fingerprints(client, repo)
+        existing = set() if force else _existing_fingerprints(client, repo)
 
         for finding in findings:
             fp = fingerprint(finding)

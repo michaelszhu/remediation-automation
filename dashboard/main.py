@@ -589,7 +589,7 @@ a:hover {{ text-decoration: underline; }}
     <th>Status</th>
     <th>Action</th>
     <th>PR</th>
-    <th>Devin Session</th>
+    <th>Devin Session *</th>
     <th style="text-align:right">ACUs (est.)</th>
 </tr>
 </thead>
@@ -598,6 +598,7 @@ a:hover {{ text-decoration: underline; }}
 </tbody>
 </table>
 
+<p class="refresh-note">* Devin session links require <a href="https://app.devin.ai" target="_blank">Devin</a> organization access to view.</p>
 <p class="refresh-note">Auto-refreshes every 5 seconds &bull; {datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")} UTC</p>
 </body>
 </html>"""

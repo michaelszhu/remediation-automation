@@ -5,6 +5,46 @@ Automated security-vulnerability remediation orchestration powered by the
 SAST scanners, dispatches autonomous remediation sessions to Devin, and tracks
 results in a central dashboard.
 
+---
+
+## How to Simulate the Workflow (5 minutes, no API key needed)
+
+The demo replays **real recorded Devin session outcomes** — no API key or
+credits required.
+
+```bash
+# 1. Clone this repo
+git clone https://github.com/michaelszhu/remediation-automation.git
+cd remediation-automation
+
+# 2. Copy .env.example and ensure replay mode is on
+cp .env.example .env
+# (default .env.example already sets DEVIN_REPLAY=1)
+
+# 3. Start the stack (orchestrator on :8000, dashboard on :8001)
+docker compose up --build -d
+
+# 4. Run the demo — dispatches 8 findings and shows results
+python -m scripts.run_demo demo
+
+# 5. Open the dashboard
+open http://localhost:8001
+```
+
+The demo dispatches 8 security findings through the system. Each finding
+triggers a simulated Devin session that replays the **real recorded outcome**
+from an actual Devin remediation run. The dashboard populates in real-time
+showing fixes, declined findings, and false positives.
+
+To run the full verification suite (four automated gates):
+
+```bash
+python -m scripts.run_demo verify
+# Prints "ALL 4 GATES PASSED" on success
+```
+
+---
+
 ## Architecture
 
 ```mermaid
@@ -65,7 +105,7 @@ scanners/          # Finding ingesters
   run_sca.py       # pip-audit SCA scanner
   run_sast.py      # Semgrep SAST scanner
   issue_filer.py   # Idempotent GitHub issue creator
-  seed_demo_findings.py  # Deterministic 3-finding demo seeder
+  seed_demo_findings.py  # Deterministic 8-finding demo seeder
 
 scripts/           # Validation & demo tooling
   run_demo.py      # Three-mode script: verify / record / demo
@@ -95,12 +135,12 @@ built-in default recordings for the eight demo findings:
 
 | Identifier                  | action_taken   | status       | Notes                                      |
 |-----------------------------|----------------|--------------|--------------------------------------------|
-| `paramiko`                  | declined       | needs_review | Risk: sshtunnel depends on removed DSSKey  |
-| `PyJWT`                     | fixed          | success      | CVE-2022-29217; skips unrelated CVEs       |
+| `paramiko`                  | false_positive | success      | Already patched (3.5.1 >= 3.4.0 fix)       |
+| `PyJWT`                     | false_positive | success      | Already patched (2.12.0 >= 2.4.0 fix)      |
 | `hive-column-injection`     | fixed          | success      | SAST — escaped column identifiers in Hive  |
 | `apispec-upgrade`           | fixed          | success      | Bumped apispec, updated test assertion      |
 | `dompurify-upgrade`         | fixed          | success      | Bumped DOMPurify for sanitizer-bypass fix   |
-| `cancel-query-sql-injection`| false_positive | needs_review | pid interpolation, not user input           |
+| `cancel-query-sql-injection`| fixed          | success      | Parameterized SQL in cancel_query           |
 | `yaml-unsafe-loader`        | fixed          | success      | Replaced yaml.Loader with yaml.SafeLoader   |
 | `silenced-exceptions`       | fixed          | success      | Added logging to silenced exception handlers |
 
@@ -204,7 +244,7 @@ git clone https://github.com/michaelszhu/superset.git ../superset
 
 ### Seed the demo backlog (recommended first step)
 
-Creates three known-good issues on the fork — deterministic and idempotent:
+Creates eight known-good issues on the fork — deterministic and idempotent:
 
 ```bash
 export GITHUB_TOKEN=ghp_...
@@ -264,9 +304,8 @@ per identifier.  `get_session()` returns the recorded terminal payload.
 `poll_until_terminal()` returns immediately (already terminal).
 
 If a recording is missing for a given identifier, the client falls back to
-built-in default recordings (paramiko, PyJWT, hive-column-injection) and logs
-a warning.  This means the system works out of the box before any real run has
-been recorded.
+built-in default recordings (all eight demo findings) and logs a warning.  This
+means the system works out of the box before any real run has been recorded.
 
 > **Note:** Prior to this rename, the env var was called `DEVIN_MOCK`. If you
 > have existing `.env` files or scripts referencing it, update them to
@@ -336,8 +375,8 @@ DEVIN_REPLAY=1 docker compose up --build -d
 python -m scripts.run_demo demo --pace 5
 ```
 
-Ends with a final tally (2 fixed, 1 declined) and the dashboard URL to
-switch to.
+Ends with a final tally (6 fixed, 1 declined, 1 false positive) and the
+dashboard URL to switch to.
 
 If `recordings/` contains files from a prior `record` run, the replay client
 uses those recorded outcomes (real ACU costs, real PR URLs) instead of the

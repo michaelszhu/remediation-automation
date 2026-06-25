@@ -314,66 +314,59 @@ _DEFAULT_RECORDINGS: dict[str, dict[str, Any]] = {
         "finding_id": "finding-paramiko-001",
         "finding_type": "sca",
         "identifier": "paramiko",
-        "action_taken": "declined",
-        "status": "needs_review",
+        "action_taken": "false_positive",
+        "status": "success",
         "pr_url": None,
         "files_changed": [],
         "addressed": [],
         "skipped": [
             {
-                "item": "paramiko >=3.5,<5.0 upgrade",
+                "item": "CVE-2023-48795",
                 "reason": (
-                    "upgrading paramiko to 5.x removes DSSKey, which the "
-                    "transitive dep sshtunnel still references; existing tests "
-                    "paper over this, so a naive bump ships a latent runtime break"
+                    "False positive: CVE-2023-48795 affects Paramiko < 3.4.0. "
+                    "The repository already uses paramiko==3.5.1 with a floor "
+                    "of >=3.4.0, which includes the Terrapin attack fix."
                 ),
             },
         ],
         "reasoning": (
-            "Investigated the paramiko upgrade path. Version 5.x drops the "
-            "deprecated DSSKey class that sshtunnel imports unconditionally. "
-            "Until sshtunnel releases a compatible version, upgrading paramiko "
-            "would introduce a runtime ImportError masked by the test suite."
+            "CVE-2023-48795 (Terrapin Attack) was fixed in paramiko 3.4.0. "
+            "This repository pins paramiko==3.5.1 in requirements/base.txt "
+            "and declares paramiko>=3.4.0,<4.0 in pyproject.toml. Since "
+            "3.5.1 > 3.4.0, the fix is already present. No code changes needed."
         ),
         "tests_passed": None,
         "scan_clean_after": None,
-        "risk_flagged": (
-            "upgrading paramiko to 5.x removes DSSKey, which the transitive "
-            "dep sshtunnel still references; existing tests paper over this, "
-            "so a naive bump ships a latent runtime break"
-        ),
+        "risk_flagged": None,
     },
     "PyJWT": {
         "finding_id": "finding-pyjwt-001",
         "finding_type": "sca",
         "identifier": "PyJWT",
-        "action_taken": "fixed",
+        "action_taken": "false_positive",
         "status": "success",
-        "pr_url": "https://github.com/michaelszhu/superset/pull/42",
-        "files_changed": [
-            "requirements/base.txt",
-            "superset/utils/core.py",
-        ],
-        "addressed": [
-            "CVE-2022-29217 — algorithm allow-list bypass affecting guest tokens",
-        ],
+        "pr_url": None,
+        "files_changed": [],
+        "addressed": [],
         "skipped": [
             {
-                "item": "CVE-2023-33460 — PyJWKClient SSRF",
-                "reason": "code path not used by Superset",
-            },
-            {
-                "item": "CVE-2024-33663 — detached JWS signature bypass",
-                "reason": "code path not used by Superset",
+                "item": "CVE-2022-29217 - PyJWT algorithm confusion",
+                "reason": (
+                    "False positive: PyJWT is pinned at 2.12.0 (>=2.4.0 "
+                    "enforced in pyproject.toml), and all jwt.decode() calls "
+                    "already pass algorithms explicitly. The vulnerability "
+                    "only affects versions < 2.4.0."
+                ),
             },
         ],
         "reasoning": (
-            "Bumped PyJWT to 2.8.0+ which enforces the algorithms parameter. "
-            "Verified Superset's guest-token validation now rejects tokens "
-            "signed with unexpected algorithms. The PyJWKClient and detached-JWS "
-            "CVEs don't apply because Superset never uses those code paths."
+            "Investigated PyJWT usage across the codebase. CVE-2022-29217 "
+            "affects PyJWT < 2.4.0 when jwt.decode() is called without an "
+            "explicit algorithms argument. This repository pins PyJWT at "
+            "2.12.0 and passes algorithms explicitly on every jwt.decode() "
+            "call. No code change needed — finding is fully mitigated."
         ),
-        "tests_passed": True,
+        "tests_passed": None,
         "scan_clean_after": None,
         "risk_flagged": None,
     },
@@ -453,30 +446,27 @@ _DEFAULT_RECORDINGS: dict[str, dict[str, Any]] = {
         "finding_id": "finding-cancel-query-sqli-001",
         "finding_type": "sast",
         "identifier": "cancel-query-sql-injection",
-        "action_taken": "false_positive",
-        "status": "needs_review",
-        "pr_url": None,
-        "files_changed": [],
-        "addressed": [],
-        "skipped": [
-            {
-                "item": "cancel_query f-string SQL interpolation",
-                "reason": (
-                    "The interpolated value is pg_stat_activity.pid — an "
-                    "integer process ID retrieved from a system catalog "
-                    "query, not user input. No injection vector exists."
-                ),
-            },
+        "action_taken": "fixed",
+        "status": "success",
+        "pr_url": "https://github.com/michaelszhu/superset/pull/102",
+        "files_changed": [
+            "superset/db_engine_specs/postgres.py",
+            "superset/db_engine_specs/redshift.py",
+            "tests/unit_tests/db_engine_specs/test_cancel_query_validation.py",
         ],
+        "addressed": [
+            "Replaced f-string SQL interpolation with parameterized queries "
+            "in PostgresEngineSpec.cancel_query and RedshiftEngineSpec.cancel_query",
+        ],
+        "skipped": [],
         "reasoning": (
-            "Investigated the cancel_query code path in postgres.py and "
-            "redshift.py. The f-string interpolates a process ID (integer) "
-            "retrieved from pg_stat_activity, not user-supplied input. "
-            "The SAST scanner flagged the pattern but this is a false "
-            "positive — no user-controlled data reaches this SQL statement."
+            "cancel_query_id flows from user API requests through SQLExecutor "
+            "into engine spec cancel_query methods, where it was interpolated "
+            "directly into SQL via f-strings. Replaced with parameterized "
+            "queries and int() casting, matching DB-API 2.0 patterns."
         ),
-        "tests_passed": None,
-        "scan_clean_after": None,
+        "tests_passed": True,
+        "scan_clean_after": True,
         "risk_flagged": None,
     },
     "yaml-unsafe-loader": {

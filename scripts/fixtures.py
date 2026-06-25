@@ -38,7 +38,7 @@ WEBHOOK_PAYLOADS: dict[str, dict[str, Any]] = {
             "paramiko 3.5.1 has CVE-2023-48795.  Upgrading to >=3.5.0 is "
             "complicated because sshtunnel depends on the removed DSSKey."
         ),
-        html_url="https://github.com/michaelszhu/superset/issues/201",
+        html_url="https://github.com/michaelszhu/superset/issues/89",
         labels=["sca", "high"],
     ),
     "PyJWT": _webhook_payload(
@@ -47,7 +47,7 @@ WEBHOOK_PAYLOADS: dict[str, dict[str, Any]] = {
             "PyJWT before 2.4.0 allows algorithm confusion when the caller "
             "does not pass an explicit algorithms argument to jwt.decode()."
         ),
-        html_url="https://github.com/michaelszhu/superset/issues/202",
+        html_url="https://github.com/michaelszhu/superset/issues/90",
         labels=["sca", "critical"],
     ),
     "hive-column-injection": _webhook_payload(
@@ -56,7 +56,7 @@ WEBHOOK_PAYLOADS: dict[str, dict[str, Any]] = {
             "HiveEngineSpec.where_latest_partition() passes unsanitized "
             "partition column names directly into sqlalchemy.Column()."
         ),
-        html_url="https://github.com/michaelszhu/superset/issues/203",
+        html_url="https://github.com/michaelszhu/superset/issues/91",
         labels=["high"],
     ),
     "apispec-upgrade": _webhook_payload(
@@ -66,7 +66,7 @@ WEBHOOK_PAYLOADS: dict[str, dict[str, Any]] = {
             "A newer apispec version changed JSON-schema generation, which "
             "breaks a unit test. Flagged for upgrade."
         ),
-        html_url="https://github.com/michaelszhu/superset/issues/204",
+        html_url="https://github.com/michaelszhu/superset/issues/92",
         labels=["sca", "low"],
     ),
     "dompurify-upgrade": _webhook_payload(
@@ -76,7 +76,7 @@ WEBHOOK_PAYLOADS: dict[str, dict[str, Any]] = {
             "for a published advisory (HTML-sanitization bypass). Flagged "
             "by the frontend SCA scan for a version bump."
         ),
-        html_url="https://github.com/michaelszhu/superset/issues/205",
+        html_url="https://github.com/michaelszhu/superset/issues/93",
         labels=["sca", "moderate"],
     ),
     "cancel-query-sql-injection": _webhook_payload(
@@ -86,7 +86,7 @@ WEBHOOK_PAYLOADS: dict[str, dict[str, Any]] = {
             "statement in the cancel_query path of the Postgres and "
             "Redshift engine specs, as a possible SQL injection."
         ),
-        html_url="https://github.com/michaelszhu/superset/issues/206",
+        html_url="https://github.com/michaelszhu/superset/issues/94",
         labels=["medium"],
     ),
     "yaml-unsafe-loader": _webhook_payload(
@@ -97,7 +97,7 @@ WEBHOOK_PAYLOADS: dict[str, dict[str, Any]] = {
             "yaml.Loader to read bundled example metadata. Flagged for "
             "replacement with yaml.SafeLoader."
         ),
-        html_url="https://github.com/michaelszhu/superset/issues/207",
+        html_url="https://github.com/michaelszhu/superset/issues/95",
         labels=["high"],
     ),
     "silenced-exceptions": _webhook_payload(
@@ -108,7 +108,7 @@ WEBHOOK_PAYLOADS: dict[str, dict[str, Any]] = {
             "logger.warning(..., exc_info=True) and narrowing broad "
             "except clauses where possible."
         ),
-        html_url="https://github.com/michaelszhu/superset/issues/208",
+        html_url="https://github.com/michaelszhu/superset/issues/96",
         labels=["low"],
     ),
 }

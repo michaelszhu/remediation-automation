@@ -1,109 +1,47 @@
 # Remediation Automation
 
 Automated security-vulnerability remediation orchestration powered by the
-[Devin API](https://docs.devin.ai). The system scans a codebase with SCA and
-SAST tools, files findings as GitHub issues, dispatches autonomous Devin
-sessions to remediate each finding, and tracks results in a live dashboard.
-
-**Target repository:** [michaelszhu/superset](https://github.com/michaelszhu/superset)
-(a fork of Apache Superset)
+[Devin API](https://docs.devin.ai). The system ingests findings from SCA and
+SAST scanners, dispatches autonomous remediation sessions to Devin, and tracks
+results in a central dashboard.
 
 ---
 
-## How to Simulate the Workflow (5 minutes)
+## How to Simulate the Workflow (5 minutes, no API key needed)
 
-The entire system can be run locally with **Docker** in **replay mode** --
-no Devin API key or GitHub token required. Replay mode replays recorded
-real-session outputs so you see exactly what a live run produces.
-
-### Prerequisites
-
-- [Docker](https://docs.docker.com/get-docker/) and
-  [Docker Compose](https://docs.docker.com/compose/install/) (v2+)
-- Python 3.10+ (only needed for the demo script; the services run inside Docker)
-
-### 1. Clone and configure
+The demo replays **real recorded Devin session outcomes** — no API key or
+credits required.
 
 ```bash
+# 1. Clone this repo
 git clone https://github.com/michaelszhu/remediation-automation.git
 cd remediation-automation
+
+# 2. Copy .env.example and ensure replay mode is on
 cp .env.example .env
-```
+# (default .env.example already sets DEVIN_REPLAY=1)
 
-Edit `.env` and set:
-
-```
-DEVIN_REPLAY=1
-```
-
-That is the only change required. All other variables can stay at their
-defaults (API keys are not needed in replay mode).
-
-### 2. Start the stack
-
-```bash
+# 3. Start the stack (orchestrator on :8000, dashboard on :8001)
 docker compose up --build -d
+
+# 4. Run the demo — dispatches 8 findings and shows results
+python -m scripts.run_demo demo
+
+# 5. Open the dashboard
+open http://localhost:8001
 ```
 
-This launches two services:
+The demo dispatches 8 security findings through the system. Each finding
+triggers a simulated Devin session that replays the **real recorded outcome**
+from an actual Devin remediation run. The dashboard populates in real-time
+showing fixes, declined findings, and false positives.
 
-| Service        | URL                    | Description                        |
-|----------------|------------------------|------------------------------------|
-| Orchestrator   | http://localhost:8000  | FastAPI service -- dispatches and tracks Devin sessions |
-| Dashboard      | http://localhost:8001  | Read-only status UI with auto-refresh |
-
-### 3. Run the demo
-
-Install the script's one dependency and run the demo:
-
-```bash
-pip install requests
-python -m scripts.run_demo demo --pace 3
-```
-
-The demo script:
-
-1. **Simulates scanner output** -- prints the three findings to the terminal
-2. **Sends webhook events** to the orchestrator (one per finding, paced 3 seconds apart)
-3. **Shows Devin's decisions** in the terminal as each session completes
-4. **Prints a final tally** and links to the dashboard
-
-Open **http://localhost:8001** in your browser to watch the dashboard populate
-in real time as each finding is dispatched and resolved.
-
-### 4. Run the automated verification suite (optional)
+To run the full verification suite (four automated gates):
 
 ```bash
 python -m scripts.run_demo verify
+# Prints "ALL 4 GATES PASSED" on success
 ```
-
-This runs four correctness gates against the replay stack and prints
-`ALL 4 GATES PASSED` on success:
-
-| Gate | What it checks |
-|------|---------------|
-| 1 -- Stack Up | Orchestrator and dashboard are reachable |
-| 2 -- Dispatch + Classify | 3 findings dispatched, correct per-finding outcomes, dashboard aggregates |
-| 3 -- Webhook Path | `issues.labeled` webhook creates one session per finding |
-| 4 -- Idempotency + Reset | Duplicate webhook does not create duplicate sessions; reset clears state |
-
-### 5. Tear down
-
-```bash
-docker compose down -v
-```
-
----
-
-## Demo Findings
-
-The system ships with three recorded findings from real Devin sessions:
-
-| Finding | Type | Devin's Decision | Outcome |
-|---------|------|-----------------|---------|
-| **paramiko** -- `paramiko==3.5.1` dependency risk (sshtunnel relies on removed DSSKey) | SCA | **False positive** | Devin analyzed the codebase: paramiko 3.5.1 with `<4.0` upper bound prevents the DSSKey breakage. No code change needed. Posted analysis as issue comment. |
-| **PyJWT** -- `CVE-2022-29217` algorithm confusion in `PyJWT==2.12.0` | SCA | **False positive** | Devin investigated all `jwt.decode()` call sites: all pass explicit `algorithms` arguments, and the installed version (2.12.0) is well above the fix threshold (2.4.0). No code change needed. |
-| **hive-column-injection** -- unsanitized partition column names in `HiveEngineSpec.where_latest_partition()` | SAST | **Fixed** | Devin added `SAFE_IDENTIFIER_REGEX` validation in both Hive and Presto engine specs. Opened [PR #53](https://github.com/michaelszhu/superset/pull/53) with tests. |
 
 ---
 
@@ -112,8 +50,8 @@ The system ships with three recorded findings from real Devin sessions:
 ```mermaid
 flowchart LR
     subgraph Scanners
-        SCA[SCA Scanner<br/>pip-audit]
-        SAST[SAST Scanner<br/>Semgrep]
+        SCA[SCA Scanner<br/>Dependabot / OSV]
+        SAST[SAST Scanner<br/>Semgrep / CodeQL]
     end
 
     subgraph This Repo
@@ -139,140 +77,315 @@ flowchart LR
     Dash --> DB
 ```
 
-### How It Works
+### Flow
 
-1. **Scanners** (`scanners/`) run `pip-audit` (SCA) and Semgrep (SAST)
-   against the target repository. Each vulnerability is normalized into a
-   `Finding` object and filed as a labelled GitHub issue (`devin-remediate`).
-
-2. **Orchestrator** (`orchestrator/`) receives findings -- either via the
-   `/run-batch` endpoint or an `issues.labeled` webhook. For each finding it
-   creates a Devin session via the v3 API, passing a structured-output schema
-   that forces Devin to return a machine-readable remediation report (action
-   taken, files changed, PR URL, reasoning, etc.).
-
-3. **Dashboard** (`dashboard/`) reads the shared SQLite database and renders
-   a live-updating status page showing per-finding outcomes, PR links, ACU
-   consumption, and aggregate metrics.
-
-### Record / Replay
-
-The Devin client supports a **record/replay** pattern:
-
-- **Record** (`DEVIN_REPLAY=0 DEVIN_RECORD=1`): Run real Devin sessions and
-  capture each session's terminal payload to `recordings/<identifier>.json`.
-- **Replay** (`DEVIN_REPLAY=1`): Replay the recorded payloads. No API calls
-  are made. If a recording is missing, built-in default recordings are used.
-
-This means the system works out of the box before any real run has been
-recorded, and after a real run the demo is indistinguishable from a live
-session.
-
----
+1. **Scanners** produce `Finding` objects (SCA vulnerabilities, SAST rule hits).
+2. **Orchestrator** receives findings, creates Devin sessions via the v3 API
+   with a structured-output schema, polls until terminal, and persists results.
+3. **Dashboard** reads the shared SQLite DB to show remediation status, PRs,
+   and risk flags.
 
 ## Repository Layout
 
 ```
-shared/            # Data models, DB helpers, Devin API client
-  models.py        # Finding, SessionRecord, structured-output JSON Schema
-  db.py            # SQLite init + CRUD
-  devin.py         # DevinClient (v3 API), ReplayDevinClient, factory
+shared/            # The contract — data models, DB helpers, Devin client
+  models.py        # Finding, SessionRecord, REMEDIATION_OUTPUT_SCHEMA, tags
+  db.py            # SQLite init + CRUD (findings & sessions tables)
+  devin.py         # DevinClient (v3 API), ReplayDevinClient, get_devin_client()
   config.py        # Env-var config helpers
 
-orchestrator/      # FastAPI service -- dispatches & tracks sessions
+orchestrator/      # FastAPI service — dispatches & tracks sessions
   main.py          # /healthz, /webhook, /run-batch, /reset, /seed-demo, /sessions
   dispatch.py      # Prompt builder, session lifecycle, idempotency, recording
 
 dashboard/         # Read-only status dashboard
-  main.py          # HTML dashboard + /api/data JSON endpoint
+  main.py          # HTML + /api/data JSON endpoint
 
 scanners/          # Finding ingesters
   run_sca.py       # pip-audit SCA scanner
   run_sast.py      # Semgrep SAST scanner
   issue_filer.py   # Idempotent GitHub issue creator
-  seed_demo_findings.py  # Deterministic 3-finding demo seeder
+  seed_demo_findings.py  # Deterministic 8-finding demo seeder
 
 scripts/           # Validation & demo tooling
   run_demo.py      # Three-mode script: verify / record / demo
   fixtures.py      # GitHub issues.labeled webhook payload fixtures
 
-recordings/        # Recorded real Devin session payloads (replay cache)
+recordings/        # Record/replay cache (written by DEVIN_RECORD=1)
 
-docker-compose.yml # Orchestrator + dashboard, shared SQLite volume
+docker-compose.yml # orchestrator + dashboard, shared SQLite volume
 Dockerfile
-.env.example       # All environment variables (documented)
+.env.example       # All required environment variables
 requirements.txt
 ```
 
----
+## Quick Start
 
-## Running with the Real Devin API
-
-To run against the live Devin API (consumes real ACUs):
+### Replay mode (no Devin API key needed)
 
 ```bash
 cp .env.example .env
-# Edit .env:
-#   DEVIN_API_KEY=cog_...      (your service-user Bearer token)
-#   DEVIN_ORG_ID=org-...       (your organization ID)
-#   DEVIN_REPLAY=0
-#   DEVIN_RECORD=1             (optional -- record session outputs)
-#   GITHUB_TOKEN=ghp_...       (optional -- file issues on the fork)
-
-docker compose up --build -d
-python -m scripts.run_demo record --yes
+# Edit .env — set DEVIN_REPLAY=1
+docker compose up --build
 ```
 
-This creates real Devin sessions for each finding, waits for them to
-complete, and saves the outputs to `recordings/`. Subsequent runs with
-`DEVIN_REPLAY=1` will replay these recorded sessions.
+The `ReplayDevinClient` replays recorded real session payloads from
+`recordings/*.json`.  If no recording exists for a finding, it falls back to
+built-in default recordings for the eight demo findings:
 
----
+| Identifier                  | action_taken   | status       | Notes                                      |
+|-----------------------------|----------------|--------------|--------------------------------------------|
+| `paramiko`                  | false_positive | success      | Already patched (3.5.1 >= 3.4.0 fix)       |
+| `PyJWT`                     | false_positive | success      | Already patched (2.12.0 >= 2.4.0 fix)      |
+| `hive-column-injection`     | fixed          | success      | SAST — escaped column identifiers in Hive  |
+| `apispec-upgrade`           | fixed          | success      | Bumped apispec, updated test assertion      |
+| `dompurify-upgrade`         | fixed          | success      | Bumped DOMPurify for sanitizer-bypass fix   |
+| `cancel-query-sql-injection`| fixed          | success      | Parameterized SQL in cancel_query           |
+| `yaml-unsafe-loader`        | fixed          | success      | Replaced yaml.Loader with yaml.SafeLoader   |
+| `silenced-exceptions`       | fixed          | success      | Added logging to silenced exception handlers |
+
+### Real mode
+
+```bash
+cp .env.example .env
+# Edit .env — set real DEVIN_API_KEY, DEVIN_ORG_ID, DEVIN_REPLAY=0
+docker compose up --build
+```
+
+### Local development (no Docker)
+
+```bash
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+export PYTHONPATH=$PWD
+python -c "from shared.db import init_db; init_db()"
+```
+
+## Components
+
+### `shared/` (this session)
+
+The shared contract that all other components import. Contains:
+
+- **`models.py`** — `Finding`, `SessionRecord` dataclasses, `FindingType` /
+  `ActionTaken` / `RemediationStatus` / `SessionStatus` enums,
+  `REMEDIATION_OUTPUT_SCHEMA` (JSON Schema Draft 7), and tag helpers.
+- **`db.py`** — SQLite schema init, `upsert_finding`, `upsert_session`,
+  `get_session`, `list_sessions`, `list_findings`.
+- **`devin.py`** — `DevinClient` (v3 API) with optional recording layer,
+  `ReplayDevinClient` (replays recorded real session payloads),
+  `get_devin_client()` factory.
+- **`config.py`** — Lazy env-var accessors.
+
+### `orchestrator/` (separate session)
+
+FastAPI service that:
+- Accepts findings from scanners
+- Creates Devin sessions with the remediation playbook
+- Polls sessions and persists structured output
+- Enforces concurrency and ACU limits
+
+### `dashboard/` (separate session)
+
+Read-only UI showing:
+- Finding status overview
+- Session details, PRs, risk flags
+- ACU consumption
+
+### `scanners/`
+
+Security scanners that produce `Finding` objects from the Superset fork and
+optionally file them as labelled GitHub issues.
+
+- **`run_sca.py`** — Runs `pip-audit` against the fork's Python requirements,
+  normalizes each vulnerability into a `Finding(finding_type="sca")`.
+- **`run_sast.py`** — Runs Semgrep with `p/python` + `p/security-audit`
+  rulesets over the fork's `superset/` backend source (excludes `tests/`,
+  `migrations/`, `examples/`), normalizes each hit into a
+  `Finding(finding_type="sast")`.
+- **`issue_filer.py`** — Given a list of `Finding` objects, creates one
+  labelled (`devin-remediate`) GitHub issue per finding on the fork.
+  Idempotent: a fingerprint comment in the issue body prevents duplicates.
+- **`seed_demo_findings.py`** — Creates exactly three deterministic issues
+  from known-good findings (see table above) for a reproducible demo.
 
 ## Environment Variables
 
-| Variable             | Required | Default                  | Description                        |
-|----------------------|----------|--------------------------|-------------------------------------|
-| `DEVIN_API_KEY`      | Yes*     | --                       | Service-user Bearer token           |
-| `DEVIN_ORG_ID`       | Yes*     | --                       | Organization ID (`org-...`)         |
-| `DEVIN_REPLAY`       | No       | `0`                      | `1` = replay mode (no API needed)   |
-| `DEVIN_RECORD`       | No       | `0`                      | `1` = record real session outputs   |
-| `DEVIN_RECORDINGS_DIR`| No      | `recordings`             | Directory for recorded payloads     |
-| `PLAYBOOK_ID`        | No       | --                       | Devin playbook for sessions         |
-| `MAX_CONCURRENCY`    | No       | `3`                      | Max parallel Devin sessions         |
-| `MAX_ACU_LIMIT`      | No       | `10`                     | ACU budget per session              |
-| `GITHUB_TOKEN`       | No       | --                       | PAT for GitHub API access           |
-| `SUPERSET_FORK_REPO` | No       | `michaelszhu/superset`   | Target repo for remediation         |
-| `REMEDIATION_DB_PATH`| No       | `remediation.db`         | SQLite database file path           |
+| Variable             | Required | Default                  | Description                              |
+|----------------------|----------|--------------------------|------------------------------------------|
+| `DEVIN_API_KEY`      | Yes*     | —                        | Service-user Bearer token                |
+| `DEVIN_ORG_ID`       | Yes*     | —                        | Organization ID (`org-...`)              |
+| `DEVIN_REPLAY`       | No       | `0`                      | Set to `1` for replay mode               |
+| `DEVIN_RECORD`       | No       | `0`                      | Set to `1` to record real session outputs |
+| `DEVIN_RECORDINGS_DIR`| No      | `recordings`             | Directory for recorded session payloads  |
+| `PLAYBOOK_ID`        | No       | —                        | Devin playbook for remediation sessions  |
+| `MAX_CONCURRENCY`    | No       | `3`                      | Max parallel Devin sessions              |
+| `MAX_ACU_LIMIT`      | No       | `10`                     | ACU budget per session                   |
+| `GITHUB_TOKEN`       | No       | —                        | PAT for GitHub API access                |
+| `SUPERSET_FORK_REPO` | No       | `michaelszhu/superset`   | Target repo for remediation              |
+| `REMEDIATION_DB_PATH`| No       | `remediation.db`         | SQLite database file path                |
 
 *Not required when `DEVIN_REPLAY=1`.
 
----
+## Running Scanners
 
-## Running Scanners (Optional)
-
-The scanners are only needed to discover new findings against a local clone
-of the target repository.
+### Prerequisites
 
 ```bash
-# Clone the target repo
+pip install -r requirements.txt
+export PYTHONPATH=$PWD
+```
+
+For live scans you also need the Superset fork cloned locally:
+
+```bash
 git clone https://github.com/michaelszhu/superset.git ../superset
+```
 
-# SCA scan (pip-audit)
+### Seed the demo backlog (recommended first step)
+
+Creates eight known-good issues on the fork — deterministic and idempotent:
+
+```bash
+export GITHUB_TOKEN=ghp_...
+export SUPERSET_FORK_REPO=michaelszhu/superset
+python -m scanners.seed_demo_findings
+```
+
+### Live SCA scan (pip-audit)
+
+```bash
 python -m scanners.run_sca --superset-path ../superset
-
-# SAST scan (Semgrep)
-python -m scanners.run_sast --superset-path ../superset
-
 # Add --file-issues to create GitHub issues for each finding
 python -m scanners.run_sca --superset-path ../superset --file-issues
 ```
 
----
+### Live SAST scan (Semgrep)
 
-## Related Repository
+```bash
+python -m scanners.run_sast --superset-path ../superset
+# Add --file-issues to create GitHub issues for each finding
+python -m scanners.run_sast --superset-path ../superset --file-issues
+```
 
-- **[michaelszhu/superset](https://github.com/michaelszhu/superset)** --
-  Forked Apache Superset repository containing the issues selected for
-  remediation and the resulting fixes. See `REMEDIATION.md` in that repo for
-  details on each issue and its outcome.
+Both scanners print findings to stdout in JSON and accept `--file-issues` to
+create labelled issues on the fork via the GitHub API.  Re-running is safe —
+the issue filer skips any finding whose fingerprint already appears in an
+existing issue.
+
+## Record / Replay
+
+The Devin client supports a **record/replay** pattern: run a real session once
+to capture its output, then replay that real session payload in all future
+demo runs.
+
+### Step 1 — Record real session outputs
+
+Run the orchestrator against the real Devin API with recording enabled:
+
+```bash
+DEVIN_REPLAY=0 DEVIN_RECORD=1 python -m orchestrator.main
+```
+
+After each session reaches terminal state, its full real session payload
+(status, `acus_consumed`, `pull_requests`, `structured_output`, `tags`) is
+written to `recordings/<identifier>.json`.  Commit these files to the repo.
+
+### Step 2 — Replay recorded sessions
+
+All later runs with `DEVIN_REPLAY=1` replay the recorded real session payloads:
+
+```bash
+DEVIN_REPLAY=1 python -m orchestrator.main
+```
+
+`ReplayDevinClient.create_session()` returns a stable deterministic session ID
+per identifier.  `get_session()` returns the recorded terminal payload.
+`poll_until_terminal()` returns immediately (already terminal).
+
+If a recording is missing for a given identifier, the client falls back to
+built-in default recordings (all eight demo findings) and logs a warning.  This
+means the system works out of the box before any real run has been recorded.
+
+> **Note:** Prior to this rename, the env var was called `DEVIN_MOCK`. If you
+> have existing `.env` files or scripts referencing it, update them to
+> `DEVIN_REPLAY`.
+
+### Overriding the recordings directory
+
+```bash
+export DEVIN_RECORDINGS_DIR=/path/to/custom/recordings
+```
+
+## Validation & Demo
+
+`scripts/run_demo.py` provides three modes for testing and demonstrating the
+system. All modes communicate with the stack over HTTP; start it first with
+`docker compose up --build`.
+
+### `verify` — replay correctness (`DEVIN_REPLAY=1`)
+
+Runs four gates against the replay stack, exiting non-zero on the first failure:
+
+| Gate | What it checks | Likely fault layer on failure |
+|------|---------------|-------------------------------|
+| 1 — Stack Up | `/healthz` ok **and** dashboard URL responds | docker-compose / networking |
+| 2 — Dispatch + Classify | Batch dispatch of 8 findings → correct per-finding outcomes (`action_taken`, `pr_url`, `scan_clean_after`, `skipped`, `risk_flagged`) + dashboard aggregates (total, fixed, declined, finite ACUs-per-fix) | dispatch / classify / ReplayDevinClient |
+| 3 — Webhook Path | One `issues.labeled` event → one session → one DB row per finding | webhook handler / issue parser |
+| 4 — Idempotency + Reset | Duplicate webhook → no duplicate sessions; clean-reset → system at zero | idempotency guard / reset endpoint |
+
+```bash
+# Start the replay stack
+DEVIN_REPLAY=1 docker compose up --build -d
+
+# Run the correctness suite
+python -m scripts.run_demo verify
+```
+
+A passing run prints `ALL 4 GATES PASSED` and exits 0.
+
+### `record` — real-API capture (`DEVIN_REPLAY=0  DEVIN_RECORD=1`)
+
+Runs real Devin sessions and captures the results to `recordings/`.
+Requires `--yes` to confirm ACU spend.
+
+```bash
+# Start the real stack with recording enabled
+DEVIN_REPLAY=0 DEVIN_RECORD=1 docker compose up --build -d
+
+# Run the capture (consumes real ACUs)
+python -m scripts.run_demo record --yes
+```
+
+On completion the script:
+1. Confirms `recordings/<identifier>.json` was written for each finding.
+2. Prints a **CAPTURE CHECKLIST** with Devin session URLs, PR URLs (or
+   "declined — no PR"), the paramiko decline-comment issue URL, and the
+   dashboard URL — ready to copy into a doc for screen-recording.
+
+### `demo` — camera-ready replay (`DEVIN_REPLAY=1`)
+
+Dispatches findings one at a time with a configurable pause (`--pace N`,
+default 3 s) so the dashboard populates progressively on-screen. Prints
+human-readable step banners for terminal narration. Does **not** hard-assert
+(a tiny mismatch won't kill a take).
+
+```bash
+DEVIN_REPLAY=1 docker compose up --build -d
+python -m scripts.run_demo demo --pace 5
+```
+
+Ends with a final tally (6 fixed, 1 declined, 1 false positive) and the
+dashboard URL to switch to.
+
+If `recordings/` contains files from a prior `record` run, the replay client
+uses those recorded outcomes (real ACU costs, real PR URLs) instead of the
+built-in defaults — making the demo indistinguishable from a live run.
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ORCHESTRATOR_URL` | `http://localhost:8000` | Base URL of the orchestrator service |
+| `DASHBOARD_URL` | `http://localhost:8001` | Base URL of the dashboard service |
+| `RECORDINGS_DIR` | `recordings` | Directory for record/replay JSON files |

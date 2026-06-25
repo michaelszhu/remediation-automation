@@ -1,0 +1,38 @@
+{
+  "session_id": "48b27654e29341508cb5ac88163e0816",
+  "status": "running",
+  "acus_consumed": 0.0,
+  "pull_requests": [
+    {
+      "pr_url": "https://github.com/michaelszhu/superset/pull/99",
+      "pr_state": "open"
+    }
+  ],
+  "structured_output": {
+    "pr_url": "https://github.com/michaelszhu/superset/pull/99",
+    "status": "success",
+    "skipped": [],
+    "addressed": [
+      "GHSA-vxr8-fq34-vvx9: Trusted Types policy survives clearConfig() and can poison later RETURN_TRUSTED_TYPE output",
+      "GHSA-gvmj-g25r-r7wr: SAFE_FOR_TEMPLATES bypass via <template> content in DOM output modes",
+      "GHSA-cmwh-pvxp-8882: Permanent ALLOWED_ATTR pollution via setConfig() bypassing hook clone-guard"
+    ],
+    "reasoning": "The root node_modules/dompurify was locked at version 3.4.7, pulled as an optional dependency of jspdf@4.2.1 (which declares dompurify ^3.3.1). Three moderate-severity advisories affect DOMPurify <=3.4.10. Version 3.4.11 is the fix release and is within the existing ^3.3.1 semver range. Running `npm update dompurify` resolved the root copy to 3.4.11 and deduplicated the previously-separate copies in packages/superset-ui-core and plugins/legacy-preset-chart-nvd3 (both already at 3.4.11). After the update, `npm audit` reports zero DOMPurify findings. The change is lockfile-only with no source code modifications.",
+    "finding_id": "finding-a732d43af86b",
+    "identifier": "Frontend dependency",
+    "action_taken": "fixed",
+    "finding_type": "sca",
+    "risk_flagged": null,
+    "tests_passed": null,
+    "files_changed": [
+      "superset-frontend/package-lock.json"
+    ],
+    "scan_clean_after": true
+  },
+  "tags": [
+    "devin-remediate",
+    "sca",
+    "agent:devin-rs"
+  ],
+  "status_detail": "waiting_for_user"
+}

@@ -1,0 +1,52 @@
+{
+  "session_id": "227d96874da0426cb5cdd73b21636790",
+  "status": "running",
+  "acus_consumed": 0.0,
+  "pull_requests": [
+    {
+      "pr_url": "https://github.com/michaelszhu/superset/pull/104",
+      "pr_state": "open"
+    }
+  ],
+  "structured_output": {
+    "pr_url": "https://github.com/michaelszhu/superset/pull/104",
+    "status": "success",
+    "skipped": [],
+    "addressed": [
+      "superset/utils/core.py: Narrowed except Exception to except ValueError for urlparse, added logger.warning with exc_info=True",
+      "superset/utils/rls.py: Added logging import and logger.warning with exc_info=True for SQL parse failures",
+      "superset/utils/oauth2.py: Added exc_info=True to existing logger.warning for OAuth2 token refresh failures",
+      "superset/commands/database/update.py: Added logger.warning with exc_info=True for default catalog lookup failure",
+      "superset/commands/database/uploaders/csv_reader.py: Added logger.warning with exc_info=True for column conversion error detail failure",
+      "superset/dashboards/api.py: Added logger.warning with exc_info=True for rison query parameter parse failure",
+      "superset/initialization/__init__.py: Added logger.warning with exc_info=True alongside existing print for database connection failure",
+      "superset/themes/utils.py: Added logging import and logger.warning with exc_info=True for theme validation failure",
+      "superset/db_engine_specs/lint_metadata.py: Added print to stderr for metadata dict parse failure in CLI script"
+    ],
+    "reasoning": "Nine exception handlers across core application code silently discarded errors. Each was remediated by adding logger.warning(..., exc_info=True) to preserve stack traces for debugging. One except clause was narrowed from Exception to ValueError where only urlparse errors are expected. The standalone CLI script (lint_metadata.py) uses print(stderr) instead of logging per its existing patterns. All changes are minimal and preserve original fallback behavior. Pre-commit hooks (mypy, ruff, pylint, ruff-format) pass on all changed files.",
+    "finding_id": "finding-8f883f791f82",
+    "identifier": "silenced-exceptions",
+    "action_taken": "fixed",
+    "finding_type": "sast",
+    "risk_flagged": null,
+    "tests_passed": true,
+    "files_changed": [
+      "superset/utils/core.py",
+      "superset/utils/rls.py",
+      "superset/utils/oauth2.py",
+      "superset/commands/database/update.py",
+      "superset/commands/database/uploaders/csv_reader.py",
+      "superset/dashboards/api.py",
+      "superset/initialization/__init__.py",
+      "superset/themes/utils.py",
+      "superset/db_engine_specs/lint_metadata.py"
+    ],
+    "scan_clean_after": true
+  },
+  "tags": [
+    "devin-remediate",
+    "sast",
+    "agent:devin-rs"
+  ],
+  "status_detail": "waiting_for_user"
+}

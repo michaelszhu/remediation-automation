@@ -1,0 +1,40 @@
+{
+  "session_id": "8e39c6cb6d7849f4a4a74ad0e03d666f",
+  "status": "running",
+  "acus_consumed": 0.0,
+  "pull_requests": [
+    {
+      "pr_url": "https://github.com/michaelszhu/superset/pull/102",
+      "pr_state": "open"
+    }
+  ],
+  "structured_output": {
+    "pr_url": "https://github.com/michaelszhu/superset/pull/102",
+    "status": "success",
+    "skipped": [],
+    "addressed": [
+      "Replaced f-string SQL interpolation with parameterized queries (%s + tuple) in PostgresEngineSpec.cancel_query and RedshiftEngineSpec.cancel_query",
+      "Removed # noqa: S608 suppression comments since parameterized queries eliminate the scanner finding",
+      "Added test assertions verifying exact parameterized SQL and tuple parameters passed to cursor.execute"
+    ],
+    "reasoning": "cancel_query_id flows from user API requests through SQLExecutor._cancel_query into engine spec cancel_query methods, where it was interpolated directly into SQL via f-strings. Both postgres.py and redshift.py had identical vulnerability patterns. validate_cancel_query_id provides upstream validation but defense-in-depth requires parameterized queries at the execute site. Replaced f-string interpolation with %s parameterized queries and int() casting, matching standard DB-API 2.0 patterns.",
+    "finding_id": "finding-28d1f5a97471",
+    "identifier": "cancel-query-sql-injection",
+    "action_taken": "fixed",
+    "finding_type": "sast",
+    "risk_flagged": null,
+    "tests_passed": true,
+    "files_changed": [
+      "superset/db_engine_specs/postgres.py",
+      "superset/db_engine_specs/redshift.py",
+      "tests/unit_tests/db_engine_specs/test_cancel_query_validation.py"
+    ],
+    "scan_clean_after": true
+  },
+  "tags": [
+    "devin-remediate",
+    "sast",
+    "agent:devin-rs"
+  ],
+  "status_detail": "waiting_for_user"
+}

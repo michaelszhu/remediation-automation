@@ -60,7 +60,7 @@ WEBHOOK_PAYLOADS: dict[str, dict[str, Any]] = {
         labels=["high"],
     ),
     "apispec-upgrade": _webhook_payload(
-        title="Dependency upgrade: apispec pinned below latest (known test break)",
+        title="apispec-upgrade: apispec pinned below latest (known test break)",
         body=(
             "apispec is pinned below 6.7 in the Superset requirements. "
             "A newer apispec version changed JSON-schema generation, which "
@@ -70,7 +70,7 @@ WEBHOOK_PAYLOADS: dict[str, dict[str, Any]] = {
         labels=["sca", "low"],
     ),
     "dompurify-upgrade": _webhook_payload(
-        title="Frontend dependency: DOMPurify flagged for sanitizer-bypass advisory",
+        title="dompurify-upgrade: DOMPurify flagged for sanitizer-bypass advisory",
         body=(
             "DOMPurify in superset-frontend is below the patched version "
             "for a published advisory (HTML-sanitization bypass). Flagged "
@@ -145,7 +145,7 @@ _WEBHOOK_SPECS: list[dict[str, Any]] = [
     },
     {
         "identifier": "apispec-upgrade",
-        "title": "Dependency upgrade: apispec pinned below latest (known test break)",
+        "title": "apispec-upgrade: apispec pinned below latest (known test break)",
         "body": (
             "apispec is pinned below 6.7 in the Superset requirements. "
             "A newer apispec version changed JSON-schema generation, which "
@@ -155,7 +155,7 @@ _WEBHOOK_SPECS: list[dict[str, Any]] = [
     },
     {
         "identifier": "dompurify-upgrade",
-        "title": "Frontend dependency: DOMPurify flagged for sanitizer-bypass advisory",
+        "title": "dompurify-upgrade: DOMPurify flagged for sanitizer-bypass advisory",
         "body": (
             "DOMPurify in superset-frontend is below the patched version "
             "for a published advisory (HTML-sanitization bypass). Flagged "

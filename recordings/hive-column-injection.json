@@ -1,31 +1,29 @@
 {
-  "session_id": "7920781a6b3b4f3b8c6c3a8be17fe32a",
+  "session_id": "3ddc8ec86ff74406bb14630e9700cdb0",
   "status": "running",
   "acus_consumed": 0.0,
   "pull_requests": [
     {
-      "pr_url": "https://github.com/michaelszhu/superset/pull/53",
+      "pr_url": "https://github.com/michaelszhu/superset/pull/101",
       "pr_state": "open"
     }
   ],
   "structured_output": {
-    "pr_url": "https://github.com/michaelszhu/superset/pull/53",
+    "pr_url": "https://github.com/michaelszhu/superset/pull/101",
     "status": "success",
     "skipped": [],
     "addressed": [
-      "hive-column-injection: unsanitized partition column names in HiveEngineSpec.where_latest_partition() and PrestoEngineSpec.where_latest_partition()"
+      "HiveEngineSpec.where_latest_partition() now validates partition column names against a strict identifier regex before passing them to sqlalchemy.Column(), preventing SQL injection via crafted partition column names in database metadata"
     ],
-    "reasoning": "Partition column names from database.get_indexes() (Hive metastore metadata) were passed directly to sqlalchemy.Column() without validation. A sql_lab user could create a table with malicious partition column names that would flow unsanitized into query construction when another user views that table via select_star. Fixed by adding SAFE_IDENTIFIER_REGEX (^[a-zA-Z0-9_]+$) validation in both PrestoEngineSpec and HiveEngineSpec where_latest_partition methods. If validation fails, the method returns None and logs a warning. Tests confirm malicious names are rejected and safe names continue to work.",
-    "finding_id": "finding-fda675e4fca3",
+    "reasoning": "Partition column names retrieved from database metadata (via database.get_indexes() \u2192 latest_partition()) were passed directly to sqlalchemy.Column() without validation. In multi-tenant environments, unprivileged users who create tables can influence partition column metadata. The fix adds a regex check (^[A-Za-z_][A-Za-z0-9_]*$) that rejects any column name containing SQL injection characters (semicolons, spaces, quotes, etc.) while allowing all legitimate identifier names. Invalid names are logged and skipped gracefully.",
+    "finding_id": "finding-fcc6e0cbaa34",
     "identifier": "hive-column-injection",
     "action_taken": "fixed",
     "finding_type": "sast",
     "risk_flagged": null,
     "tests_passed": true,
     "files_changed": [
-      "superset/db_engine_specs/presto.py",
       "superset/db_engine_specs/hive.py",
-      "tests/unit_tests/db_engine_specs/test_presto.py",
       "tests/unit_tests/db_engine_specs/test_hive.py"
     ],
     "scan_clean_after": null

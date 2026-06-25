@@ -1,0 +1,37 @@
+{
+  "session_id": "871d5c3499824d7e8496f69775e67182",
+  "status": "running",
+  "acus_consumed": 0.0,
+  "pull_requests": [
+    {
+      "pr_url": "https://github.com/michaelszhu/superset/pull/103",
+      "pr_state": "open"
+    }
+  ],
+  "structured_output": {
+    "pr_url": "https://github.com/michaelszhu/superset/pull/103",
+    "status": "success",
+    "skipped": [],
+    "addressed": [
+      "yaml.Loader usage in load_configs_from_directory() replaced with yaml.safe_load()"
+    ],
+    "reasoning": "The finding is valid. load_configs_from_directory() in superset/examples/utils.py used yaml.Loader (with a # noqa: S506 suppression) to parse metadata.yaml from bundled example directories. yaml.Loader allows arbitrary Python object instantiation via constructor tags like !!python/object/apply:. The metadata only contains simple scalars (version, timestamp, type) per MetadataSchema, so yaml.safe_load() is fully sufficient and consistent with the rest of the codebase (load_yaml() in superset/commands/importers/v1/utils.py and data_loading.py both use yaml.safe_load). The fix replaces yaml.Loader with yaml.safe_load() and removes the noqa suppression. Two regression tests were added: one proving unsafe YAML constructors are now rejected, and one verifying the type-stripping logic still works correctly.",
+    "finding_id": "finding-ebdb13498813",
+    "identifier": "yaml-unsafe-loader",
+    "action_taken": "fixed",
+    "finding_type": "sast",
+    "risk_flagged": null,
+    "tests_passed": null,
+    "files_changed": [
+      "superset/examples/utils.py",
+      "tests/unit_tests/examples/utils_test.py"
+    ],
+    "scan_clean_after": true
+  },
+  "tags": [
+    "devin-remediate",
+    "sast",
+    "agent:devin-rs"
+  ],
+  "status_detail": "waiting_for_user"
+}

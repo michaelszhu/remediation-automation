@@ -1,5 +1,5 @@
 {
-  "session_id": "ff9ef2c0eca146f194b153ebf255af10",
+  "session_id": "3400ce3f06e5437abc3542398413f70a",
   "status": "running",
   "acus_consumed": 0.0,
   "pull_requests": [],
@@ -8,13 +8,13 @@
     "status": "success",
     "skipped": [
       {
-        "item": "CVE-2022-29217",
-        "reason": "False positive: PyJWT is already at version 2.12.0 (patched in 2.4.0), pyproject.toml constraint >=2.4.0 prevents vulnerable versions, and all jwt.decode() calls pass explicit algorithms arguments providing defense in depth"
+        "item": "CVE-2022-29217 - PyJWT algorithm confusion",
+        "reason": "False positive: PyJWT is pinned at 2.12.0 (>=2.4.0 enforced in pyproject.toml), and all jwt.decode() calls already pass algorithms explicitly. The vulnerability only affects versions < 2.4.0."
       }
     ],
     "addressed": [],
-    "reasoning": "Investigated all jwt.decode() call sites in the Superset codebase. Found 3 calls: superset/utils/oauth2.py passes algorithms=[app.config['DATABASE_OAUTH2_JWT_ALGORITHM']], superset/async_events/async_query_manager.py passes algorithms=['HS256'], and superset/mcp_service/jwt_verifier.py uses authlib.jose (not PyJWT). The installed version is 2.12.0 and the minimum constraint is >=2.4.0, making the vulnerability impossible to exploit. This is a false positive \u2014 no code change needed.",
-    "finding_id": "finding-f9ccae3c6568",
+    "reasoning": "Investigated PyJWT usage across the codebase. The vulnerability (CVE-2022-29217) affects PyJWT < 2.4.0 when jwt.decode() is called without an explicit algorithms argument. This repository (1) pins PyJWT at 2.12.0 in requirements/base.txt, (2) enforces >=2.4.0 in pyproject.toml, and (3) passes algorithms explicitly on every jwt.decode() call (superset/utils/oauth2.py:265, superset/async_events/async_query_manager.py:215, superset/security/manager.py:4064). The jwt_verifier.py uses authlib.jose, not PyJWT. No code change needed \u2014 finding is fully mitigated by both version and coding practice.",
+    "finding_id": "finding-e9a9b979e553",
     "identifier": "PyJWT",
     "action_taken": "false_positive",
     "finding_type": "sca",

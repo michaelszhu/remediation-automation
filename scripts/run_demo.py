@@ -5,7 +5,7 @@ Modes
 -----
 verify   Replay correctness suite (DEVIN_REPLAY=1)
 record   Real-API capture run   (DEVIN_REPLAY=0  DEVIN_RECORD=1)
-demo     Camera-ready replay    (DEVIN_REPLAY=1, replaying recordings/)
+demo     Camera-ready demo      (replay or live — adapts to DEVIN_REPLAY)
 
 Usage
 -----
@@ -43,7 +43,11 @@ ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://localhost:8000")
 DASHBOARD_URL = os.getenv("DASHBOARD_URL", "http://localhost:8001")
 RECORDINGS_DIR = Path(os.getenv("RECORDINGS_DIR", "recordings"))
 
-DEMO_IDENTIFIERS = ("paramiko", "PyJWT", "hive-column-injection")
+DEMO_IDENTIFIERS = (
+    "paramiko", "PyJWT", "hive-column-injection",
+    "apispec-upgrade", "dompurify-upgrade", "cancel-query-sql-injection",
+    "yaml-unsafe-loader", "silenced-exceptions",
+)
 
 # ---------------------------------------------------------------------------
 # Output helpers
@@ -285,18 +289,19 @@ def mode_verify() -> int:
     banner("GATE 3 \u2014 Webhook Path")
     step("Clean-reset")
     clean_reset()
+    webhook_count = len(WEBHOOK_PAYLOADS)
     for ident, payload in WEBHOOK_PAYLOADS.items():
         step(f"POST /webhook for {ident}")
         resp = post_webhook(payload)
         print(f"    \u2192 {resp}")
 
-    step("Polling for 3 terminal sessions \u2026")
-    sessions = poll_terminal(3)
+    step(f"Polling for {webhook_count} terminal sessions \u2026")
+    sessions = poll_terminal(webhook_count)
 
     gate3_ok = True
     count = len(sessions)
-    result_line(f"{count} sessions created (expected 3)", count == 3)
-    gate3_ok = gate3_ok and (count == 3)
+    result_line(f"{count} sessions created (expected {webhook_count})", count == webhook_count)
+    gate3_ok = gate3_ok and (count == webhook_count)
 
     fids = [s["finding_id"] for s in sessions]
     no_dups = len(fids) == len(set(fids))
@@ -378,14 +383,18 @@ def mode_record(yes: bool) -> int:
 
     # -- Step 2: Dispatch via webhooks (real Devin sessions) ----------------
     banner("Step 2 \u2014 Webhook triggers real Devin sessions")
+    dispatched_count = 0
     for ident in DEMO_IDENTIFIERS:
+        if ident not in payloads:
+            continue
         payload = payloads[ident]
         step(f"Webhook for {ident}")
         resp = post_webhook(payload)
         print(f"    \u2192 {resp}")
+        dispatched_count += 1
 
-    step("Polling until all 3 sessions reach terminal state \u2026")
-    sessions = poll_terminal(3, timeout=7200, interval=30, live=True)
+    step(f"Polling until all {dispatched_count} sessions reach terminal state \u2026")
+    sessions = poll_terminal(dispatched_count, timeout=7200, interval=30, live=True)
 
     # -- confirm recordings -------------------------------------------------
     banner("Recording Check")
@@ -436,7 +445,7 @@ def mode_record(yes: bool) -> int:
 
 
 def _run_scanner_step(pace: int = 2, fresh: bool = False) -> dict[str, str]:
-    """Run the scanner and file GitHub issues for the 3 demo findings.
+    """Run the scanner and file GitHub issues for the 8 demo findings.
 
     Returns a mapping of identifier \u2192 issue URL.  If ``GITHUB_TOKEN``
     is not set, prints a simulated scanner and falls back to placeholder
@@ -504,17 +513,28 @@ def _run_scanner_step(pace: int = 2, fresh: bool = False) -> dict[str, str]:
 
 
 def mode_demo(pace: int, fresh: bool = False) -> int:
-    """Camera-ready replay (DEVIN_REPLAY=1, replaying recordings/)."""
+    """Camera-ready demo — works in both replay and live mode.
+
+    Replay (DEVIN_REPLAY=1): instant results from pre-recorded outcomes.
+    Live   (DEVIN_REPLAY=0): real Devin sessions, dashboard populates
+    as sessions complete.
+    """
 
     if not healthz_ok():
         print("ERROR: Orchestrator not responding at", ORCHESTRATOR_URL)
-        print("Start the stack with DEVIN_REPLAY=1:")
-        print("  DEVIN_REPLAY=1 docker compose up --build")
+        print("Start the stack first:")
+        print("  docker compose up --build -d")
         return 1
 
-    banner("MODE: demo (camera-ready)")
-    # Use real recordings when available
-    _set_replay_config(defaults_only=False)
+    is_replay = os.getenv("DEVIN_REPLAY", "0").strip() == "1"
+
+    if is_replay:
+        banner("MODE: demo (camera-ready \u2014 replay)")
+        _set_replay_config(defaults_only=False)
+    else:
+        banner("MODE: demo (live \u2014 real Devin sessions)")
+        print("  WARNING: Live mode creates real Devin sessions and consumes ACUs.")
+
     step("Clean-reset \u2014 dashboard starts EMPTY")
     clean_reset()
 
@@ -526,7 +546,10 @@ def mode_demo(pace: int, fresh: bool = False) -> int:
     banner("Step 2 \u2014 Webhook triggers Devin remediation")
     print("  GitHub sends issues.labeled webhook to orchestrator")
 
+    dispatched_count = 0
     for i, ident in enumerate(DEMO_IDENTIFIERS):
+        if ident not in payloads:
+            continue
         payload = payloads[ident]
         issue_url = payload["issue"]["html_url"]
 
@@ -534,27 +557,30 @@ def mode_demo(pace: int, fresh: bool = False) -> int:
         print(f"    issue: {issue_url}")
         resp = post_webhook(payload)
         print(f"    \u2192 Devin session dispatched: {resp.get('finding_id', '')}")
+        dispatched_count += 1
 
-        # brief wait for the background dispatch to finish (replay is instant)
-        time.sleep(2)
-        sessions = get_sessions()
-        latest = [s for s in sessions if s.get("identifier") == ident]
-        if latest:
-            s = latest[-1]
-            action = s.get("action_taken") or "\u2026"
-            label = {
-                "fixed": "FIXED \u2014 PR opened",
-                "declined": "DECLINED \u2014 risk flagged",
-                "false_positive": "FALSE POSITIVE \u2014 no action needed",
-            }.get(action, action.upper())
-            pr = s.get("pr_url")
-            print(f"    \u2192 {ident}: {label}")
-            if pr:
-                print(f"       PR: {pr}")
+        if is_replay:
+            # Replay is instant — show results immediately
+            time.sleep(2)
+            sessions = get_sessions()
+            latest = [s for s in sessions if s.get("identifier") == ident]
+            if latest:
+                s = latest[-1]
+                _print_session_result(ident, s)
 
         if i < len(DEMO_IDENTIFIERS) - 1:
             print(f"\n    (pausing {pace}s \u2026)")
             time.sleep(pace)
+
+    # -- In live mode, poll until all sessions reach terminal state ----------
+    if not is_replay and dispatched_count > 0:
+        banner("Waiting for Devin sessions to complete")
+        step(f"Polling until all {dispatched_count} sessions finish \u2026")
+        print(f"    Dashboard ({DASHBOARD_URL}) updates live as sessions complete")
+        sessions = poll_terminal(
+            dispatched_count, timeout=7200, interval=30, live=True,
+        )
+        print(f"\n    All {dispatched_count} sessions complete.")
 
     # -- Step 3: Dashboard + final tally ------------------------------------
     banner("Step 3 \u2014 Dashboard & Results")
@@ -568,6 +594,20 @@ def mode_demo(pace: int, fresh: bool = False) -> int:
     print(f"  ACUs per Fix   : {m['acus_per_fix']}")
     print(f"\n  Dashboard: {DASHBOARD_URL}")
     return 0
+
+
+def _print_session_result(ident: str, session: dict) -> None:
+    """Print a single session's outcome."""
+    action = session.get("action_taken") or "\u2026"
+    label = {
+        "fixed": "FIXED \u2014 PR opened",
+        "declined": "DECLINED \u2014 risk flagged",
+        "false_positive": "FALSE POSITIVE \u2014 no action needed",
+    }.get(action, action.upper())
+    pr = session.get("pr_url")
+    print(f"    \u2192 {ident}: {label}")
+    if pr:
+        print(f"       PR: {pr}")
 
 
 # ===================================================================
@@ -595,7 +635,7 @@ def main() -> int:
 
     dem = sub.add_parser(
         "demo",
-        help="Camera-ready replay (DEVIN_REPLAY=1)",
+        help="Camera-ready demo (replay or live)",
     )
     dem.add_argument(
         "--pace",

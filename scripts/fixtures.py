@@ -1,4 +1,4 @@
-"""GitHub ``issues.labeled`` webhook payload fixtures for the 3 demo findings.
+"""GitHub ``issues.labeled`` webhook payload fixtures for the 8 demo findings.
 
 Each payload is parameterized so that the orchestrator's ``_parse_issue_to_finding``
 function extracts the correct ``identifier``, ``finding_type``, and ``severity``.
@@ -59,6 +59,58 @@ WEBHOOK_PAYLOADS: dict[str, dict[str, Any]] = {
         html_url="https://github.com/michaelszhu/superset/issues/203",
         labels=["high"],
     ),
+    "apispec-upgrade": _webhook_payload(
+        title="Dependency upgrade: apispec pinned below latest (known test break)",
+        body=(
+            "apispec is pinned below 6.7 in the Superset requirements. "
+            "A newer apispec version changed JSON-schema generation, which "
+            "breaks a unit test. Flagged for upgrade."
+        ),
+        html_url="https://github.com/michaelszhu/superset/issues/204",
+        labels=["sca", "low"],
+    ),
+    "dompurify-upgrade": _webhook_payload(
+        title="Frontend dependency: DOMPurify flagged for sanitizer-bypass advisory",
+        body=(
+            "DOMPurify in superset-frontend is below the patched version "
+            "for a published advisory (HTML-sanitization bypass). Flagged "
+            "by the frontend SCA scan for a version bump."
+        ),
+        html_url="https://github.com/michaelszhu/superset/issues/205",
+        labels=["sca", "moderate"],
+    ),
+    "cancel-query-sql-injection": _webhook_payload(
+        title="cancel-query-sql-injection: Possible SQL injection in cancel_query",
+        body=(
+            "The SAST scan flagged an f-string interpolated into a SQL "
+            "statement in the cancel_query path of the Postgres and "
+            "Redshift engine specs, as a possible SQL injection."
+        ),
+        html_url="https://github.com/michaelszhu/superset/issues/206",
+        labels=["medium"],
+    ),
+    "yaml-unsafe-loader": _webhook_payload(
+        title="yaml-unsafe-loader: Unsafe YAML deserialization in load_configs_from_directory()",
+        body=(
+            "yaml.Loader allows arbitrary Python object instantiation via "
+            "YAML constructor tags. load_configs_from_directory() uses "
+            "yaml.Loader to read bundled example metadata. Flagged for "
+            "replacement with yaml.SafeLoader."
+        ),
+        html_url="https://github.com/michaelszhu/superset/issues/207",
+        labels=["high"],
+    ),
+    "silenced-exceptions": _webhook_payload(
+        title="silenced-exceptions: Silently swallowed exceptions across core modules",
+        body=(
+            "Multiple exception handlers across the codebase catch errors "
+            "and silently discard them. Flagged for adding "
+            "logger.warning(..., exc_info=True) and narrowing broad "
+            "except clauses where possible."
+        ),
+        html_url="https://github.com/michaelszhu/superset/issues/208",
+        labels=["low"],
+    ),
 }
 
 
@@ -90,6 +142,58 @@ _WEBHOOK_SPECS: list[dict[str, Any]] = [
             "partition column names directly into sqlalchemy.Column()."
         ),
         "labels": ["high"],
+    },
+    {
+        "identifier": "apispec-upgrade",
+        "title": "Dependency upgrade: apispec pinned below latest (known test break)",
+        "body": (
+            "apispec is pinned below 6.7 in the Superset requirements. "
+            "A newer apispec version changed JSON-schema generation, which "
+            "breaks a unit test. Flagged for upgrade."
+        ),
+        "labels": ["sca", "low"],
+    },
+    {
+        "identifier": "dompurify-upgrade",
+        "title": "Frontend dependency: DOMPurify flagged for sanitizer-bypass advisory",
+        "body": (
+            "DOMPurify in superset-frontend is below the patched version "
+            "for a published advisory (HTML-sanitization bypass). Flagged "
+            "by the frontend SCA scan for a version bump."
+        ),
+        "labels": ["sca", "moderate"],
+    },
+    {
+        "identifier": "cancel-query-sql-injection",
+        "title": "cancel-query-sql-injection: Possible SQL injection in cancel_query",
+        "body": (
+            "The SAST scan flagged an f-string interpolated into a SQL "
+            "statement in the cancel_query path of the Postgres and "
+            "Redshift engine specs, as a possible SQL injection."
+        ),
+        "labels": ["medium"],
+    },
+    {
+        "identifier": "yaml-unsafe-loader",
+        "title": "yaml-unsafe-loader: Unsafe YAML deserialization in load_configs_from_directory()",
+        "body": (
+            "yaml.Loader allows arbitrary Python object instantiation via "
+            "YAML constructor tags. load_configs_from_directory() uses "
+            "yaml.Loader to read bundled example metadata. Flagged for "
+            "replacement with yaml.SafeLoader."
+        ),
+        "labels": ["high"],
+    },
+    {
+        "identifier": "silenced-exceptions",
+        "title": "silenced-exceptions: Silently swallowed exceptions across core modules",
+        "body": (
+            "Multiple exception handlers across the codebase catch errors "
+            "and silently discard them. Flagged for adding "
+            "logger.warning(..., exc_info=True) and narrowing broad "
+            "except clauses where possible."
+        ),
+        "labels": ["low"],
     },
 ]
 

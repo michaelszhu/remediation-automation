@@ -1,4 +1,4 @@
-"""Seed six deterministic demo findings as GitHub issues.
+"""Seed eight deterministic demo findings as GitHub issues.
 
 Usage::
 
@@ -15,6 +15,8 @@ Creates labelled ``devin-remediate`` issues on the fork for:
 4. **apispec pin** — pinned below latest, known test break on upgrade.
 5. **DOMPurify advisory** — sanitizer-bypass advisory, frontend SCA.
 6. **cancel_query SQL injection** — f-string interpolation in Postgres/Redshift.
+7. **YAML unsafe loader** — yaml.Loader allows arbitrary code execution.
+8. **Silenced exceptions** — broad except handlers discard errors silently.
 
 Idempotent — safe to run repeatedly.  Use ``--reset`` to close existing
 demo issues and create fresh ones.
@@ -172,6 +174,73 @@ DEMO_FINDINGS: list[Finding] = [
                 "confidence": "MEDIUM",
                 "also_affects": [
                     "superset/db_engine_specs/redshift.py",
+                ],
+            },
+        },
+    ),
+    # 7. SAST — YAML unsafe loader
+    Finding(
+        finding_id="sast-yaml-unsafe-loader",
+        finding_type=FindingType.SAST,
+        identifier="yaml-unsafe-loader",
+        title="Unsafe YAML deserialization: yaml.Loader in load_configs_from_directory()",
+        severity="high",
+        source_issue_url="",
+        raw_details={
+            "rule_id": "yaml-unsafe-loader",
+            "path": "superset/examples/utils.py",
+            "start_line": 42,
+            "end_line": 42,
+            "message": (
+                "yaml.Loader allows arbitrary Python object instantiation via "
+                "YAML constructor tags (e.g. !!python/object/apply:os.system). "
+                "load_configs_from_directory() uses yaml.Loader to read bundled "
+                "example metadata. While the current call site only reads local "
+                "filesystem files, the unrestricted loader is unnecessary — the "
+                "data is simple key-value. yaml.SafeLoader restricts "
+                "deserialization to basic scalars, sequences, and mappings, "
+                "eliminating the code-execution surface as defense-in-depth."
+            ),
+            "metadata": {
+                "cwe": ["CWE-502"],
+                "confidence": "HIGH",
+            },
+        },
+    ),
+    # 8. SAST — silenced exceptions across core modules
+    Finding(
+        finding_id="sast-silenced-exceptions",
+        finding_type=FindingType.SAST,
+        identifier="silenced-exceptions",
+        title="Silently swallowed exceptions across core modules",
+        severity="low",
+        source_issue_url="",
+        raw_details={
+            "rule_id": "silenced-exceptions",
+            "path": "superset/",
+            "start_line": 0,
+            "end_line": 0,
+            "message": (
+                "Multiple exception handlers across the codebase catch errors "
+                "and silently discard them — using pass, bare return, or "
+                "print() — making it impossible to diagnose failures in "
+                "production. Affected modules include "
+                "charts/client_processing.py, extensions/__init__.py, "
+                "async_events/async_query_manager.py, utils/log.py, "
+                "models/core.py, and connectors/sqla/utils.py. Flagged for "
+                "adding logger.warning(..., exc_info=True) and narrowing "
+                "broad except Exception clauses where possible."
+            ),
+            "metadata": {
+                "cwe": ["CWE-390"],
+                "confidence": "HIGH",
+                "also_affects": [
+                    "superset/charts/client_processing.py",
+                    "superset/extensions/__init__.py",
+                    "superset/async_events/async_query_manager.py",
+                    "superset/utils/log.py",
+                    "superset/models/core.py",
+                    "superset/connectors/sqla/utils.py",
                 ],
             },
         },

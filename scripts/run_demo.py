@@ -9,9 +9,9 @@ demo     Camera-ready demo      (replay or live — adapts to DEVIN_REPLAY)
 
 Usage
 -----
-    python -m scripts.run_demo verify
-    python -m scripts.run_demo record --yes
-    python -m scripts.run_demo demo --pace 5
+    docker compose exec orchestrator python -m scripts.run_demo verify
+    docker compose exec orchestrator python -m scripts.run_demo record --yes
+    docker compose exec orchestrator python -m scripts.run_demo demo --pace 5
 
 Environment
 -----------
@@ -41,6 +41,7 @@ from scripts.fixtures import WEBHOOK_PAYLOADS, build_webhook_payloads
 
 ORCHESTRATOR_URL = os.getenv("ORCHESTRATOR_URL", "http://localhost:8000")
 DASHBOARD_URL = os.getenv("DASHBOARD_URL", "http://localhost:8001")
+DASHBOARD_HOST_URL = os.getenv("DASHBOARD_HOST_URL", "http://localhost:8001")
 RECORDINGS_DIR = Path(os.getenv("RECORDINGS_DIR", "recordings"))
 
 DEMO_IDENTIFIERS = (
@@ -493,7 +494,7 @@ def mode_record(yes: bool) -> int:
         if action == "declined":
             print(f"    Decline issue : {source_url}")
 
-    print(f"\n  Dashboard URL   : {DASHBOARD_URL}")
+    print(f"\n  Dashboard URL   : {DASHBOARD_HOST_URL}")
     print()
     return 0
 
@@ -635,7 +636,7 @@ def mode_demo(pace: int, fresh: bool = False) -> int:
     if not is_replay and dispatched_count > 0:
         banner("Waiting for Devin sessions to complete")
         step(f"Polling until all {dispatched_count} sessions finish \u2026")
-        print(f"    Dashboard ({DASHBOARD_URL}) updates live as sessions complete")
+        print(f"    Dashboard ({DASHBOARD_HOST_URL}) updates live as sessions complete")
         sessions = poll_terminal(
             dispatched_count, timeout=7200, interval=30, live=True,
         )
@@ -651,7 +652,7 @@ def mode_demo(pace: int, fresh: bool = False) -> int:
     print(f"  Total Findings : {m['total']}")
     print(f"  Total ACUs     : {m['total_acus']}")
     print(f"  ACUs per Fix   : {m['acus_per_fix']}")
-    print(f"\n  Dashboard: {DASHBOARD_URL}")
+    print(f"\n  Dashboard (open in browser): {DASHBOARD_HOST_URL}")
     return 0
 
 

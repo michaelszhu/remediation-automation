@@ -16,6 +16,7 @@ services:
       - DEVIN_REPLAY=${DEVIN_REPLAY:-0}
       - DEVIN_RECORD=${DEVIN_RECORD:-0}
       - DEVIN_RECORDINGS_DIR=/app/recordings
+      - DASHBOARD_URL=http://dashboard:8001
     volumes:
       - db-data:/data
       - ./recordings:/app/recordings

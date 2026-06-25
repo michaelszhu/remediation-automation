@@ -135,12 +135,12 @@ built-in default recordings for the eight demo findings:
 
 | Identifier                  | action_taken   | status       | Notes                                      |
 |-----------------------------|----------------|--------------|--------------------------------------------|
-| `paramiko`                  | declined       | needs_review | Risk: sshtunnel depends on removed DSSKey  |
-| `PyJWT`                     | fixed          | success      | CVE-2022-29217; skips unrelated CVEs       |
+| `paramiko`                  | false_positive | success      | Already patched (3.5.1 >= 3.4.0 fix)       |
+| `PyJWT`                     | false_positive | success      | Already patched (2.12.0 >= 2.4.0 fix)      |
 | `hive-column-injection`     | fixed          | success      | SAST — escaped column identifiers in Hive  |
 | `apispec-upgrade`           | fixed          | success      | Bumped apispec, updated test assertion      |
 | `dompurify-upgrade`         | fixed          | success      | Bumped DOMPurify for sanitizer-bypass fix   |
-| `cancel-query-sql-injection`| false_positive | needs_review | pid interpolation, not user input           |
+| `cancel-query-sql-injection`| fixed          | success      | Parameterized SQL in cancel_query           |
 | `yaml-unsafe-loader`        | fixed          | success      | Replaced yaml.Loader with yaml.SafeLoader   |
 | `silenced-exceptions`       | fixed          | success      | Added logging to silenced exception handlers |
 

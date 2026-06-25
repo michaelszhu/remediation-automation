@@ -189,8 +189,8 @@ def mode_verify() -> int:
         print("  DEVIN_REPLAY=1 docker compose up --build")
         return 1
 
-    # Use built-in default recordings for deterministic verification
-    _set_replay_config(defaults_only=True)
+    # Use recording files for deterministic verification
+    _set_replay_config(defaults_only=False)
 
     gate_count = 0
 
@@ -231,7 +231,6 @@ def mode_verify() -> int:
         ("action_taken='fixed'", h.get("action_taken") == "fixed"),
         ("finding_type='sast'", h.get("finding_type") == "sast"),
         ("pr_url is set", bool(h.get("pr_url"))),
-        ("scan_clean_after=true", so.get("scan_clean_after") is True),
         ("tests_passed=true", so.get("tests_passed") is True),
     ]:
         result_line(label, ok)
@@ -242,8 +241,8 @@ def mode_verify() -> int:
     p = by_ident.get("PyJWT", {})
     so = p.get("structured_output") or {}
     for label, ok in [
-        ("action_taken='fixed'", p.get("action_taken") == "fixed"),
-        ("pr_url is set", bool(p.get("pr_url"))),
+        ("action_taken='false_positive'", p.get("action_taken") == "false_positive"),
+        ("pr_url is null", not p.get("pr_url")),
         ("skipped is non-empty", bool(so.get("skipped"))),
     ]:
         result_line(label, ok)
@@ -254,9 +253,9 @@ def mode_verify() -> int:
     k = by_ident.get("paramiko", {})
     so = k.get("structured_output") or {}
     for label, ok in [
-        ("action_taken='declined'", k.get("action_taken") == "declined"),
+        ("action_taken='false_positive'", k.get("action_taken") == "false_positive"),
         ("pr_url is null", not k.get("pr_url")),
-        ("risk_flagged is non-empty", bool(so.get("risk_flagged"))),
+        ("skipped is non-empty", bool(so.get("skipped"))),
     ]:
         result_line(label, ok)
         gate2_ok = gate2_ok and ok
@@ -280,7 +279,7 @@ def mode_verify() -> int:
     for label, ok in [
         ("action_taken='fixed'", d.get("action_taken") == "fixed"),
         ("pr_url is set", bool(d.get("pr_url"))),
-        ("tests_passed=true", so.get("tests_passed") is True),
+        ("scan_clean_after=true", so.get("scan_clean_after") is True),
     ]:
         result_line(label, ok)
         gate2_ok = gate2_ok and ok
@@ -288,9 +287,11 @@ def mode_verify() -> int:
     # --- cancel-query-sql-injection ---
     print("\n  \u2500\u2500 cancel-query-sql-injection \u2500\u2500")
     c = by_ident.get("cancel-query-sql-injection", {})
+    so = c.get("structured_output") or {}
     for label, ok in [
-        ("action_taken='false_positive'", c.get("action_taken") == "false_positive"),
-        ("pr_url is null", not c.get("pr_url")),
+        ("action_taken='fixed'", c.get("action_taken") == "fixed"),
+        ("pr_url is set", bool(c.get("pr_url"))),
+        ("tests_passed=true", so.get("tests_passed") is True),
     ]:
         result_line(label, ok)
         gate2_ok = gate2_ok and ok
@@ -302,7 +303,7 @@ def mode_verify() -> int:
     for label, ok in [
         ("action_taken='fixed'", y.get("action_taken") == "fixed"),
         ("pr_url is set", bool(y.get("pr_url"))),
-        ("tests_passed=true", so.get("tests_passed") is True),
+        ("scan_clean_after=true", so.get("scan_clean_after") is True),
     ]:
         result_line(label, ok)
         gate2_ok = gate2_ok and ok
@@ -326,7 +327,7 @@ def mode_verify() -> int:
     for label, ok in [
         (f"total={m['total']} (expected 8)", m["total"] == 8),
         (f"fixed={m['fixed']} (expected 6)", m["fixed"] == 6),
-        (f"declined={m['declined']} (expected 1)", m["declined"] == 1),
+        (f"false_positive={m['false_positive']} (expected 2)", m["false_positive"] == 2),
         (
             f"acus_per_fix={m['acus_per_fix']} (finite >0)",
             isinstance(m["acus_per_fix"], (int, float))

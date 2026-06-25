@@ -650,8 +650,8 @@ def mode_demo(pace: int, fresh: bool = False) -> int:
     print(f"  Declined       : {m['declined']}")
     print(f"  False Positive : {m.get('false_positive', 0)}")
     print(f"  Total Findings : {m['total']}")
-    print(f"  Total ACUs     : {m['total_acus']}")
-    print(f"  ACUs per Fix   : {m['acus_per_fix']}")
+    print(f"  Total ACUs     : {m['total_acus']} (estimated)")
+    print(f"  ACUs per Fix   : {m['acus_per_fix']} (estimated)")
     print(f"\n  Dashboard (open in browser): {DASHBOARD_HOST_URL}")
     return 0
 
